@@ -1,0 +1,38 @@
+{
+  "name": "janus-diff",
+  "productName": "Janus Diff",
+  "version": "0.1.0",
+  "description": "Side-by-side folder, text and hex comparison tool",
+  "main": "src/main/main.js",
+  "author": "Andre Soares <andre09soares@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "dist:win": "electron-builder --win nsis portable --x64"
+  },
+  "devDependencies": {
+    "electron": "^44.7.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "local.janusdiff.app",
+    "publish": null,
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "installer/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "include": "installer/installer.nsh"
+    }
+  }
+}

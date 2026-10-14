@@ -1,0 +1,90 @@
+# Janus Diff
+
+Ferramenta de comparação lado a lado (pastas, texto e hex) em Electron,
+pensada para uso com git e com o menu de contexto do Explorer.
+
+![Comparação de pastas](docs/screenshots/1-dir.png)
+![Comparação de texto](docs/screenshots/4-text.png)
+
+## Executar
+
+```
+npm install
+npm start                      # abre a tela inicial
+npm start -- <esquerda> <direita>   # duas pastas ou dois arquivos
+npm test                       # testes do motor de comparação
+```
+
+## Gerar instalador para Windows
+
+```
+npm run dist:win
+```
+
+Gera instalador NSIS e executável portátil em `dist/`. Rode em uma máquina
+Windows (ou em Linux com Wine instalado).
+
+## Menu de contexto do Explorer (Windows)
+
+O instalador registra as opções; rodando do código-fonte, use
+**Tools → Install Explorer Context Menu**.
+
+1. Botão direito num arquivo → **Janus Diff: Select Left File**.
+2. Botão direito em outro arquivo → **Janus Diff: Compare to "nome.ext"** (abre a
+   comparação) ou **Janus Diff: Select Left File** (troca a seleção).
+
+Com dois arquivos (ou duas pastas) selecionados, o menu mostra só
+**Janus Diff: Compare**, que abre a comparação direto. Essa opção também
+aparece com um item só e, nesse caso, abre o item sozinho no lado esquerdo.
+
+O mesmo vale para pastas (*Janus Diff: Select Left Folder*). No Windows 11 as
+opções ficam em "Mostrar mais opções". As chaves ficam em
+`HKCU\Software\Classes\*\shell` e `...\Directory\shell` e são removidas pelo
+desinstalador ou por **Tools → Remove Explorer Context Menu**.
+
+## Git
+
+**Tools → Configure as Git Diff Tool** (ou `--git-setup`) grava no
+`~/.gitconfig` global:
+
+```
+git difftool                 # um arquivo por vez
+git difftool --dir-diff      # todas as mudanças numa comparação de pastas
+```
+
+## Linha de comando
+
+```
+<app> <esquerda> [<direita>]   abre a comparação (reusa a janela já aberta)
+<app> --wait <esq> <dir>       processo próprio; termina ao fechar a janela
+<app> --select-left <caminho>  memoriza o lado esquerdo
+<app> --compare-to <caminho>   compara o lado memorizado com este
+<app> --compare-selected <c>   junta os itens de uma seleção múltipla do Explorer
+<app> --register-shell | --unregister-shell | --git-setup
+```
+
+## Recursos
+
+- **Pastas:** árvores alinhadas, cores por resultado (igual, diferente, mais
+  novo/antigo, órfão), critérios (tamanho, data com tolerância, conteúdo por
+  CRC / binário / regras), filtros de nome, filtros de exibição, copiar,
+  excluir (lixeira), renomear, nova pasta, sincronizar (Update / Mirror).
+- **Texto:** alinhamento de linhas, diferenças dentro da linha, regras de
+  importância (espaços, maiúsculas), navegação por seção, realinhamento
+  manual (F7 numa linha, depois clique na linha correspondente do outro
+  lado), copiar seção ou
+  linha entre os lados, editar, desfazer/refazer, salvar preservando
+  codificação e fim de linha, miniatura, localizar, ir para linha.
+- **Hex:** comparação byte a byte.
+- Abas, sessões recentes, arrastar e soltar, lista de atalhos (F1).
+
+## Estrutura
+
+```
+src/core/textdiff.js     motor de diff de texto (Node + renderer)
+src/core/dircompare.js   motor de comparação de pastas
+src/main/                processo principal, menu, IPC
+src/renderer/            interface (abas, pastas, texto, hex)
+tools/icon/              gera o ícone a partir de installer/icon.svg
+tools/smoke/             teste de fumaça da interface (Electron + Xvfb em Docker)
+```

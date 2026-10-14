@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Janus: two faces back to back, one per comparison side. -->
+  <defs>
+    <path id="face" d="M134 42 C164 42 188 61 191 92 L193 104 L215 137 L198 142 L203 154 L196 160 L200 170 C199 188 189 198 171 198 L167 198 L167 216 L134 216 Z"/>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#1b2130"/>
+  <use href="#face" fill="#f2695c"/>
+  <use href="#face" fill="#4c9bf5" transform="translate(256 0) scale(-1 1)"/>
+  <circle cx="174" cy="106" r="8" fill="#1b2130"/>
+  <circle cx="82" cy="106" r="8" fill="#1b2130"/>
+</svg>
