@@ -113,6 +113,49 @@ class VScroller {
   }
 }
 
+// Popup menu at a mouse position. items: [[label, shortcut, run, disabled], '|'].
+// Closes on a pick, a click elsewhere, a key, a scroll or losing the window.
+const ContextMenu = {
+  el: null,
+
+  show(x, y, items) {
+    ContextMenu.close();
+    const menu = h('div', { class: 'ctx-menu' }, items.map((it) => {
+      if (it === '|') return h('div', { class: 'ctx-sep' });
+      const [label, key, run, disabled] = it;
+      return h('div', {
+        class: 'ctx-item' + (disabled ? ' disabled' : ''),
+        onmousedown: (e) => e.stopPropagation(),
+        onclick: () => { if (disabled) return; ContextMenu.close(); run(); },
+      }, h('span', { class: 'ctx-label' }, label), h('span', { class: 'ctx-key' }, key || ''));
+    }));
+    document.body.append(menu);
+    const r = menu.getBoundingClientRect();
+    menu.style.left = Math.max(0, Math.min(x, window.innerWidth - r.width - 2)) + 'px';
+    menu.style.top = Math.max(0, Math.min(y, window.innerHeight - r.height - 2)) + 'px';
+    ContextMenu.el = menu;
+    document.addEventListener('mousedown', ContextMenu.close, true);
+    document.addEventListener('keydown', ContextMenu.onKey, true);
+    document.addEventListener('wheel', ContextMenu.close, true);
+    window.addEventListener('blur', ContextMenu.close);
+  },
+
+  onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); }
+    ContextMenu.close();
+  },
+
+  close(e) {
+    if (!ContextMenu.el || (e && e.type === 'mousedown' && ContextMenu.el.contains(e.target))) return;
+    ContextMenu.el.remove();
+    ContextMenu.el = null;
+    document.removeEventListener('mousedown', ContextMenu.close, true);
+    document.removeEventListener('keydown', ContextMenu.onKey, true);
+    document.removeEventListener('wheel', ContextMenu.close, true);
+    window.removeEventListener('blur', ContextMenu.close);
+  },
+};
+
 const Modal = {
   open: false,
 

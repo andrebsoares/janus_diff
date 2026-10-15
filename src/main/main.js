@@ -102,8 +102,6 @@ function buildMenu() {
       submenu: [
         item('Copy to Right', 'CopyRight', 'Ctrl+R'),
         item('Copy to Left', 'CopyLeft', 'Ctrl+L'),
-        item('Copy Line to Right', 'CopyItemRight', 'Ctrl+Shift+R'),
-        item('Copy Line to Left', 'CopyItemLeft', 'Ctrl+Shift+L'),
         sep,
         item('Open / Compare Contents', 'Open', 'Enter'),
         item('Compare Contents of Selection...', 'CompareContents', 'Ctrl+M'),
@@ -132,6 +130,9 @@ function buildMenu() {
         sep,
         { role: 'cut' }, { role: 'copy' }, { role: 'paste' },
         item('Copy as Unified Diff', 'CopyPatch', 'Ctrl+Shift+C'),
+        sep,
+        item('Copy Line to Right', 'CopyLineRight', 'Ctrl+Shift+R'),
+        item('Copy Line to Left', 'CopyLineLeft', 'Ctrl+Shift+L'),
         sep,
         item('Edit Line', 'FullEdit', 'F2'),
         item('Insert Line After', 'InsertItemAfter', 'Ctrl+Enter'),

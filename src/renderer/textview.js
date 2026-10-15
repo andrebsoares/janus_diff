@@ -7,7 +7,7 @@ const TV_TAB = 4;
 
 const TV_KEYS = {
   'Ctrl+S': 'Save', F12: 'SaveAs', F5: 'Refresh', 'Ctrl+Z': 'Undo', 'Ctrl+Y': 'Redo', 'Ctrl+Shift+Z': 'Redo',
-  'Ctrl+R': 'CopyRight', 'Ctrl+L': 'CopyLeft', 'Ctrl+Shift+R': 'CopyItemRight', 'Ctrl+Shift+L': 'CopyItemLeft',
+  'Ctrl+R': 'CopyRight', 'Ctrl+L': 'CopyLeft', 'Ctrl+Shift+R': 'CopyLineRight', 'Ctrl+Shift+L': 'CopyLineLeft',
   'Ctrl+Enter': 'InsertItemAfter', 'Ctrl+A': 'SelectAll', 'Ctrl+D': 'SelectSection', F2: 'FullEdit', Enter: 'FullEdit',
   'Ctrl+N': 'DiffNext', 'Ctrl+P': 'DiffPrev', 'Ctrl+F': 'Find', F3: 'FindNext', 'Shift+F3': 'FindPrev',
   'Ctrl+G': 'GoTo', Del: 'Delete', 'Alt+Left': 'GoLeft', 'Alt+Right': 'GoRight', F6: 'GoNext', 'Shift+F6': 'GoNext',
@@ -72,7 +72,8 @@ class TextView {
     const tb = buildToolbar([
       ['✱ All', 'FavCompareAll', 'Show all lines'], ['≠ Diffs', 'FavDiff', 'Show only differences'], ['= Same', 'FavSame', 'Show only matching lines'],
       ['≈ Minor', 'InsigIgnored', 'Ignore unimportant differences'], ['Rules', 'Rules', 'Session settings: importance'], '|',
-      ['⇨ Copy', 'CopyRight', 'Copy section or selection to right (Ctrl+R)'], ['⇦ Copy', 'CopyLeft', 'Copy section or selection to left (Ctrl+L)'], '|',
+      ['⇨ Copy', 'CopyRight', 'Copy section or selection to right (Ctrl+R)'], ['⇦ Copy', 'CopyLeft', 'Copy section or selection to left (Ctrl+L)'],
+      ['→ Line', 'CopyLineRight', 'Copy only the current line(s) to right (Ctrl+Shift+R)'], ['← Line', 'CopyLineLeft', 'Copy only the current line(s) to left (Ctrl+Shift+L)'], '|',
       ['↓ Next', 'DiffNext', 'Next difference section (Ctrl+N)'], ['↑ Prev', 'DiffPrev', 'Previous difference section (Ctrl+P)'],
       ['⇅ Align', 'AlignWith', 'Align this line with a line on the other side (F7)'], '|',
       ['↶ Undo', 'Undo', 'Undo (Ctrl+Z)'], ['↷ Redo', 'Redo', 'Redo (Ctrl+Y)'], ['✎ Edit', 'FullEdit', 'Edit line (F2)'], ['Save', 'Save', 'Save (Ctrl+S)'],
@@ -90,6 +91,7 @@ class TextView {
       this.rowsEl[side] = h('div', { class: 'tv-rows' });
       const pane = h('div', { class: 'tv-pane', tabIndex: -1 }, this.rowsEl[side]);
       pane.addEventListener('mousedown', (e) => this.onMouse(e, side));
+      pane.addEventListener('contextmenu', (e) => this.onContextMenu(e, side));
       pane.addEventListener('scroll', () => {
         const other = this.panes[side === 'left' ? 'right' : 'left'];
         if (other.scrollLeft !== pane.scrollLeft) other.scrollLeft = pane.scrollLeft;
@@ -315,12 +317,18 @@ class TextView {
     const lo = Math.min(this.cur, this.anchor), hi = Math.max(this.cur, this.anchor);
     if (k >= lo && k <= hi && lo !== hi) cls += ' sel';
     if (k === this.cur) cls += side === this.side ? ' cur' : ' cur-other';
-    let btn = '';
-    if (kind !== 'same' && this.sections[row.sec][key] === this.vis[k]) {
-      btn = `<span class="copy-btn" title="Copy section to ${side === 'left' ? 'right' : 'left'}">${side === 'left' ? '⇨' : '⇦'}</span>`;
+    // Gutter: the section's copy button on its first row with a line on this
+    // side, and on every differing row a button that copies just that row
+    // (from a gap it removes the other side's line).
+    let btn = '', lineBtn = '';
+    if (kind !== 'same') {
+      const to = side === 'left' ? 'right' : 'left';
+      if (this.sections[row.sec][key] === this.vis[k]) btn = `<span class="copy-btn" title="Copy section to ${to}">${side === 'left' ? '⇨' : '⇦'}</span>`;
+      const what = idx >= 0 ? `Copy this line to ${to}` : `Remove the ${to} line`;
+      lineBtn = `<span class="line-btn" title="${what} (Shift+click: whole section)">${side === 'left' ? '→' : '←'}</span>`;
     }
     const num = this.showNums ? `<span class="num">${idx >= 0 ? idx + 1 : ''}</span>` : '';
-    return `<div class="${cls}" data-k="${k}">${num}<span class="gut">${btn}</span><span class="tx">${text}</span></div>`;
+    return `<div class="${cls}" data-k="${k}">${num}<span class="gut">${btn}</span><span class="gut line">${lineBtn}</span><span class="tx">${text}</span></div>`;
   }
 
   render(first, n, offset) {
@@ -401,21 +409,36 @@ class TextView {
     if (!rowEl) return;
     const k = Number(rowEl.dataset.k);
     this.side = side;
+    // A right-click inside the selection keeps it for the context menu.
+    if (e.button === 2 && k >= Math.min(this.cur, this.anchor) && k <= Math.max(this.cur, this.anchor)) {
+      this.scroller.refresh();
+      return;
+    }
     this.cur = k;
-    if (!e.shiftKey) this.anchor = k;
-    if (this.alignFrom && e.button === 0) {
+    if (!e.shiftKey || e.button === 2) this.anchor = k;
+    if (e.button !== 0) {
+      this.scroller.refresh();
+      return;
+    }
+    if (this.alignFrom) {
       this.alignPick();
       return;
     }
+    const to = side === 'left' ? 'right' : 'left';
     if (e.target.classList.contains('copy-btn')) {
       this.anchor = k;
-      this.copySection(side === 'left' ? 'right' : 'left');
+      this.copySection(to);
+      return;
+    }
+    if (e.target.classList.contains('line-btn')) {
+      this.anchor = k;
+      if (e.shiftKey) this.copySection(to); else this.copyLines(to);
       return;
     }
     this.scroller.refresh();
     // Redrawing on mousedown replaces the clicked element, so the browser
     // never fires dblclick; the click count on mousedown is reliable.
-    if (e.detail === 2 && e.button === 0) {
+    if (e.detail === 2) {
       e.preventDefault();
       this.editLine();
     }
@@ -477,6 +500,7 @@ class TextView {
     to.push({ l: L.lines, r: R.lines, dl: L.dirty, dr: R.dirty, al: this.aligns });
     L.lines = snap.l; R.lines = snap.r; L.dirty = snap.dl; R.dirty = snap.dr;
     this.aligns = snap.al;
+    this.message = '';
     this.recompare();
   }
 
@@ -519,9 +543,9 @@ class TextView {
     this.scroller.refresh();
   }
 
-  copySection(to, lineOnly) {
-    const idxs = this.targetRows(lineOnly);
-    if (!idxs.length) return;
+  // Replaces the lines of rows idxs (contiguous) on side `to` with the other
+  // side's lines of the same rows; returns where they went and how many.
+  copyRows(to, idxs) {
     const from = to === 'left' ? 'right' : 'left';
     const fk = from === 'left' ? 'l' : 'r', tk = to === 'left' ? 'l' : 'r';
     const src = idxs.filter((i) => this.rows[i][fk] >= 0).map((i) => this.sides[from].lines[this.rows[i][fk]]);
@@ -529,8 +553,66 @@ class TextView {
     const pos = tgt.length ? tgt[0] : this.insertionPoint(idxs[0], tk, to);
     this.pushUndo();
     this.replaceLines(to, pos, tgt.length, src);
+    return { pos, count: src.length };
+  }
+
+  copySection(to) {
+    const idxs = this.targetRows(false);
+    if (!idxs.length) return;
+    const { pos } = this.copyRows(to, idxs);
     this.side = to;
     this.recompare(pos);
+  }
+
+  // Copies only the rows under the cursor or in the selection, never the
+  // rest of their section: a changed line replaces its counterpart, an orphan
+  // line is inserted in place, and a gap on the source side removes the
+  // target line. The cursor then moves on to the next differing row, so that
+  // repeating the command applies one line after another.
+  copyLines(to) {
+    const idxs = this.targetRows(true);
+    if (!idxs.length) return;
+    if (idxs.every((i) => this.rows[i].type === 'same')) {
+      this.message = 'Nothing to copy: the line is the same on both sides';
+      this.scroller.refresh();
+      return;
+    }
+    const from = to === 'left' ? 'right' : 'left';
+    const fk = from === 'left' ? 'l' : 'r', tk = to === 'left' ? 'l' : 'r';
+    // The first source line after the block keeps its number; the target
+    // lines after it shift to just after the copied ones.
+    const fromAfter = this.insertionPoint(idxs[idxs.length - 1] + 1, fk, from);
+    const { pos, count } = this.copyRows(to, idxs);
+    const toAfter = pos + count;
+    const side = this.side;
+    this.side = to;
+    this.recompare(pos);
+    this.side = side;
+    const start = this.rows.findIndex((r) => r[fk] >= fromAfter || r[tk] >= toAfter);
+    const next = start < 0 ? -1 : this.vis.findIndex((i) => i >= start && this.kind(this.rows[i]) !== 'same');
+    this.message = next < 0 ? 'Line copied; no more differences below' : '';
+    if (next >= 0) this.moveTo(next, false, true);
+    else this.scroller.refresh();
+  }
+
+  onContextMenu(e, side) {
+    e.preventDefault();
+    if (!e.target.closest('.row') || this.alignFrom) return;
+    const row = this.rows[this.vis[this.cur]];
+    const idxs = this.targetRows(true);
+    const lineDiff = idxs.some((i) => this.rows[i].type !== 'same');
+    const secDiff = !!row && row.sec >= 0 && this.kind(row) !== 'same';
+    const lines = idxs.length > 1 ? 'Lines' : 'Line';
+    ContextMenu.show(e.clientX, e.clientY, [
+      [`Copy ${lines} to Right`, 'Ctrl+Shift+R', () => this.command('CopyLineRight'), !lineDiff],
+      [`Copy ${lines} to Left`, 'Ctrl+Shift+L', () => this.command('CopyLineLeft'), !lineDiff],
+      '|',
+      ['Copy Section to Right', 'Ctrl+R', () => this.command('CopyRight'), !secDiff],
+      ['Copy Section to Left', 'Ctrl+L', () => this.command('CopyLeft'), !secDiff],
+      '|',
+      ['Edit Line', 'F2', () => this.command('FullEdit'), !row || row[side === 'left' ? 'l' : 'r'] < 0],
+      ['Copy Text', 'Ctrl+C', () => this.command('CopyText')],
+    ]);
   }
 
   deleteLines() {
@@ -696,8 +778,8 @@ class TextView {
       case 'Rules': this.editRules(); break;
       case 'CopyRight': this.copySection('right'); break;
       case 'CopyLeft': this.copySection('left'); break;
-      case 'CopyItemRight': this.copySection('right', true); break;
-      case 'CopyItemLeft': this.copySection('left', true); break;
+      case 'CopyLineRight': this.copyLines('right'); break;
+      case 'CopyLineLeft': this.copyLines('left'); break;
       case 'DiffNext': this.gotoSection(1); break;
       case 'DiffPrev': this.gotoSection(-1); break;
       case 'Undo': this.restore(this.undo, this.redo); break;

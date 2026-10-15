@@ -75,8 +75,9 @@ git difftool --dir-diff      # todas as mudanças numa comparação de pastas
 - **Texto:** alinhamento de linhas, diferenças dentro da linha, regras de
   importância (espaços, maiúsculas), navegação por seção, realinhamento
   manual (F7 numa linha, depois clique na linha correspondente do outro
-  lado), copiar seção ou
-  linha entre os lados, editar, desfazer/refazer, salvar preservando
+  lado), copiar seção (Ctrl+R / Ctrl+L) ou só a linha (Ctrl+Shift+R / L,
+  setas → / ← na margem de cada linha diferente, ou clique direito) entre
+  os lados, editar, desfazer/refazer, salvar preservando
   codificação e fim de linha, miniatura, localizar, ir para linha, copiar
   (Ctrl+Shift+C) ou salvar as diferenças como diff unificado (patch).
 - **Hex:** comparação byte a byte.
