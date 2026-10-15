@@ -1,3 +1,4 @@
 node_modules/
 dist/
 beyondcompare3/
+tools/e2e/out/
