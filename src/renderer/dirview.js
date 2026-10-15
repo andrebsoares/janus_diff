@@ -270,6 +270,7 @@ class DirView {
     if (!rowEl) return;
     const k = Number(rowEl.dataset.k);
     const node = this.flat[k].node;
+    this.message = '';
     const rect = rowEl.getBoundingClientRect();
     this.side = e.clientX < rect.left + rect.width / 2 ? 'left' : 'right';
     if (e.target.classList.contains('tw') && node.isDir) {
@@ -311,6 +312,7 @@ class DirView {
 
   moveTo(k, extend, center) {
     if (!this.flat.length) return;
+    this.message = '';
     this.cur = Math.max(0, Math.min(this.flat.length - 1, k));
     if (extend) this.selectRange();
     else { this.anchor = this.cur; this.selected = new Set([this.flat[this.cur].node.rel]); }
@@ -347,6 +349,22 @@ class DirView {
 
   // ---- operations --------------------------------------------------------
 
+  // Explains in the status bar why a command did nothing; the next click
+  // or cursor move clears it.
+  notice(text) {
+    this.message = text;
+    this.renderStatus();
+  }
+
+  // Status text for a per-side command whose selection exists only on the
+  // other side, e.g. Delete with the cursor on the empty half of an orphan.
+  missingOn(side, nodes, what) {
+    if (!nodes.length) return `Nothing to ${what} — no item selected`;
+    const other = side === 'left' ? 'right' : 'left';
+    const which = nodes.length === 1 ? `"${nodes[0].name}" exists only on the ${other}` : `the ${nodes.length} selected items exist only on the ${other} side`;
+    return `Nothing to ${what} the ${side} side — ${which}`;
+  }
+
   async report(title, res) {
     if (res.errors.length) await Modal.message(title, `${res.done} done, ${res.errors.length} failed:\n\n${res.errors.slice(0, 12).join('\n')}`);
     await this.refresh();
@@ -354,9 +372,10 @@ class DirView {
 
   async copy(to) {
     const from = to === 'left' ? 'right' : 'left';
-    if (!this.roots[to]) return;
-    const items = this.selection().filter((n) => n[from]).map((n) => ({ from: this.pathOf(n, from), to: this.pathOf(n, to) }));
-    if (!items.length) return;
+    if (!this.roots[to]) { this.notice(`Nothing to copy to — no ${to} folder is open`); return; }
+    const nodes = this.selection();
+    const items = nodes.filter((n) => n[from]).map((n) => ({ from: this.pathOf(n, from), to: this.pathOf(n, to) }));
+    if (!items.length) { this.notice(this.missingOn(from, nodes, 'copy from')); return; }
     const overwrite = this.selection().filter((n) => n[from] && n[to] && !n.isDir).length;
     const text = `Copy ${items.length} item(s) to the ${to} side?` + (overwrite ? `\n${overwrite} existing file(s) will be replaced.` : '');
     if (!(await Modal.confirm('Copy', text, 'Copy'))) return;
@@ -364,9 +383,12 @@ class DirView {
   }
 
   async remove(permanent) {
-    const items = this.selection().filter((n) => n[this.side]).map((n) => ({ path: this.pathOf(n, this.side) }));
-    if (!items.length) return;
-    const text = `Delete ${items.length} item(s) from the ${this.side} side?\n` + (permanent ? 'They will be permanently deleted.' : 'They will be moved to the recycle bin.');
+    const nodes = this.selection();
+    const items = nodes.filter((n) => n[this.side]).map((n) => ({ path: this.pathOf(n, this.side) }));
+    if (!items.length) { this.notice(this.missingOn(this.side, nodes, 'delete on')); return; }
+    const skipped = nodes.length - items.length;
+    const text = `Delete ${items.length} item(s) from the ${this.side} side?\n` + (permanent ? 'They will be permanently deleted.' : 'They will be moved to the recycle bin.')
+      + (skipped ? `\n${skipped} selected item(s) exist only on the other side and will be skipped.` : '');
     if (!(await Modal.confirm('Delete', text, 'Delete'))) return;
     await this.report('Delete', await this.deleteItems(items, !!permanent));
   }
@@ -386,7 +408,8 @@ class DirView {
 
   async rename() {
     const cur = this.flat[this.cur];
-    if (!cur || !cur.node[this.side]) return;
+    if (!cur) return;
+    if (!cur.node[this.side]) { this.notice(this.missingOn(this.side, [cur.node], 'rename on')); return; }
     const name = await Modal.prompt('Rename', `New name (${this.side} side):`, cur.node[this.side].name);
     if (!name || name === cur.node[this.side].name) return;
     try {
@@ -398,7 +421,7 @@ class DirView {
   }
 
   async newFolder() {
-    if (!this.roots[this.side]) return;
+    if (!this.roots[this.side]) { this.notice(`Cannot create a folder — no ${this.side} folder is open`); return; }
     const name = await Modal.prompt('New Folder', `Folder name (${this.side} side):`, 'New Folder');
     if (!name) return;
     const cur = this.flat[this.cur];
@@ -538,7 +561,7 @@ class DirView {
   // the session's name filters, where Rules can edit or remove it.
   exclude() {
     const nodes = this.selection();
-    if (!nodes.length) return;
+    if (!nodes.length) { this.notice('Nothing to exclude — no item selected'); return; }
     const masks = nodes.map((n) => '-/' + n.rel.replace(/[*?;]/g, '?') + (n.isDir ? '/' : ''));
     this.criteria = Object.assign({}, this.criteria, { filters: [this.criteria.filters || '*', ...masks].join(';') });
     this.refresh();
