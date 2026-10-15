@@ -33,4 +33,16 @@ function parseCli(args, cwd) {
   return out;
 }
 
-module.exports = { parseCli };
+// The app's own arguments in process.argv: everything after the executable
+// and, when unpackaged (`electron [switches] <app> ...`), without the app
+// path, which is the first argument that is not a switch — not necessarily
+// argv[1], since launchers such as Playwright put switches before it.
+function appArgs(argv, packaged) {
+  const args = argv.slice(1);
+  if (packaged) return args;
+  // -r / --require <module> is Electron's one switch with a separate value.
+  const i = args.findIndex((a, j) => !a.startsWith('-') && !['-r', '--require'].includes(args[j - 1]));
+  return i < 0 ? args : args.slice(0, i).concat(args.slice(i + 1));
+}
+
+module.exports = { parseCli, appArgs };

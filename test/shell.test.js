@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const Shell = require('../src/main/shellmenu');
-const { parseCli } = require('../src/main/cli');
+const { parseCli, appArgs } = require('../src/main/cli');
 
 const launcher = { exe: 'C:\\Apps\\Janus Diff.exe', args: [] };
 
@@ -87,4 +87,19 @@ test('command line parsing', () => {
   assert.strictEqual(parseCli(['--compare-to'], cwd).mode, 'open');
   assert.deepStrictEqual([parseCli(['--compare-selected', 'f.txt'], cwd).mode, parseCli(['--compare-selected'], cwd).mode], ['compare-selected', 'open']);
   assert.strictEqual(parseCli(['--register-shell'], cwd).mode, 'register-shell');
+});
+
+test('app arguments skip the app path wherever the switches put it', () => {
+  const exe = 'C:\\e\\electron.exe';
+  assert.deepStrictEqual(appArgs([exe, '.', 'a', 'b'], false), ['a', 'b']);
+  // Playwright: Chromium switches before the app path.
+  assert.deepStrictEqual(appArgs([exe, '--inspect=0', '--remote-debugging-port=0', '.', '--wait', 'a', 'b'], false),
+    ['--inspect=0', '--remote-debugging-port=0', '--wait', 'a', 'b']);
+  assert.deepStrictEqual(appArgs([exe, '-r', 'hook.js', 'C:\\src\\app', '--select-left', 'C:\\f.txt'], false),
+    ['-r', 'hook.js', '--select-left', 'C:\\f.txt']);
+  assert.deepStrictEqual(appArgs([exe, '--no-sandbox'], false), ['--no-sandbox']);
+  // Packaged: no app path, the first argument is already the user's.
+  assert.deepStrictEqual(appArgs(['C:\\Apps\\Janus Diff.exe', 'a', 'b'], true), ['a', 'b']);
+  const cli = parseCli(appArgs([exe, '--inspect=0', '.', 'left', 'right'], false), path.resolve('/work'));
+  assert.deepStrictEqual(cli.paths, [path.resolve('/work/left'), path.resolve('/work/right')]);
 });

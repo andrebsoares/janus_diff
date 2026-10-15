@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const Dir = require('../core/dircompare');
 const Shell = require('./shellmenu');
-const { parseCli } = require('./cli');
+const { parseCli, appArgs } = require('./cli');
 
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
 const MAX_RECENT = 30;
@@ -328,7 +328,7 @@ function registerIpc() {
   });
 }
 
-const cli = parseCli(process.argv.slice(app.isPackaged ? 1 : 2), process.cwd());
+const cli = parseCli(appArgs(process.argv, app.isPackaged), process.cwd());
 let startPaths = cli.paths;
 
 // Explorer context menu and setup commands that finish without a window.
