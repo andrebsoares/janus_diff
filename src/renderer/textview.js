@@ -456,9 +456,11 @@ class TextView {
     return { lo, hi, n: this.vis.length ? hi - lo + 1 : 0 };
   }
 
-  // The floating "copy N lines" button sits in the selection's pane at the
-  // edge facing the other side, just below the selection (or above it when
-  // that is off screen), while the selection has differences and is visible.
+  // The floating "copy N lines" button sits at the right edge of the
+  // selection's pane, on a row whose text ends before it so no code is
+  // hidden: the row just below the selection if possible, then the selected
+  // rows from the bottom, then rows further out. It shows while the
+  // selection has differences and is visible.
   placeSelButton() {
     const b = this.selBtn, sel = this.selection();
     const top = this.scroller.bar.scrollTop, viewH = this.panes.left.clientHeight;
@@ -470,12 +472,24 @@ class TextView {
     const label = `${toRight ? '→' : '←'} Copy ${sel.n} lines`;
     if (b.textContent !== label) b.textContent = label;
     b.title = `Copy the ${sel.n} selected lines to the ${toRight ? 'right' : 'left'} (Ctrl+Shift+${toRight ? 'R' : 'L'})`;
-    const pane = this.panes[this.side], bh = b.offsetHeight;
-    let y = (sel.hi + 1) * TV_ROW - top + 2;
-    if (y + bh > viewH) y = sel.lo * TV_ROW - top - bh - 2;
-    y = Math.max(2, Math.min(viewH - bh - 2, y));
-    const tx = this.rowsEl[this.side].querySelector('.row .tx');
-    const x = toRight ? pane.clientWidth - b.offsetWidth - 8 : (tx ? tx.offsetLeft : 90) + 8;
+    const pane = this.panes[this.side];
+    const x = pane.clientWidth - b.offsetWidth - 8;
+    const limit = pane.getBoundingClientRect().left + pane.clientLeft + x - 6;
+    const range = document.createRange();
+    const fits = (k) => {
+      if (k * TV_ROW < top || (k + 1) * TV_ROW > top + viewH) return false;
+      const tx = this.rowsEl[this.side].querySelector(`.row[data-k="${k}"] .tx`);
+      if (!tx || !tx.firstChild) return true;
+      range.selectNodeContents(tx);
+      return range.getBoundingClientRect().right <= limit;
+    };
+    const order = [sel.hi + 1];
+    for (let k = sel.hi; k >= sel.lo; k--) order.push(k);
+    for (let d = 1; d * TV_ROW < viewH; d++) order.push(sel.lo - d, sel.hi + 1 + d);
+    // Every visible row reaching the button: fall back to below the selection.
+    let k = order.find(fits);
+    if (k === undefined) k = (sel.hi + 2) * TV_ROW <= top + viewH ? sel.hi + 1 : sel.lo - 1;
+    const y = Math.max(0, Math.min(viewH - b.offsetHeight, k * TV_ROW - top));
     b.style.top = pane.offsetTop + y + 'px';
     b.style.left = pane.offsetLeft + x + 'px';
   }
