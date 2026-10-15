@@ -427,6 +427,13 @@ class DirView {
   }
 
   gotoDiff(dir) {
+    // Going down from a collapsed folder with differences enters it first,
+    // or the walk below would step over its contents.
+    const here = this.flat[this.cur];
+    if (dir > 0 && here && here.node.isDir && here.node.status !== 'same' && here.node.children.length && !this.expanded.has(here.node.rel)) {
+      this.expanded.add(here.node.rel);
+      this.reflow();
+    }
     for (let k = this.cur + dir; k >= 0 && k < this.flat.length; k += dir) {
       const node = this.flat[k].node;
       if (node.status === 'same') continue;
