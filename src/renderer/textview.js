@@ -12,7 +12,7 @@ const TV_KEYS = {
   'Ctrl+N': 'DiffNext', 'Ctrl+P': 'DiffPrev', 'Ctrl+F': 'Find', F3: 'FindNext', 'Shift+F3': 'FindPrev',
   'Ctrl+G': 'GoTo', Del: 'Delete', 'Alt+Left': 'GoLeft', 'Alt+Right': 'GoRight', F6: 'GoNext', 'Shift+F6': 'GoNext',
   Up: 'Up', Down: 'Down', PageUp: 'PageUp', PageDown: 'PageDown', 'Ctrl+Home': 'Top', 'Ctrl+End': 'Bottom',
-  'Shift+Up': 'SelUp', 'Shift+Down': 'SelDown', 'Ctrl+C': 'CopyText', 'Ctrl+Shift+C': 'CopyPatch', F7: 'AlignWith', Esc: 'AlignCancel',
+  'Shift+Up': 'SelUp', 'Shift+Down': 'SelDown', 'Ctrl+C': 'CopyText', 'Ctrl+Shift+V': 'PasteSide', 'Ctrl+Shift+C': 'CopyPatch', F7: 'AlignWith', Esc: 'AlignCancel',
 };
 
 const TV_TYPE_CAPTION = {
@@ -31,7 +31,7 @@ const TV_RULE_FIELDS = [
 ];
 
 function tvNewSide() {
-  return { path: '', lines: [], eol: '\n', finalNewline: true, encoding: 'utf8', dirty: false, binary: false, maxLen: 0 };
+  return { path: '', lines: [], eol: '\n', finalNewline: true, encoding: 'utf8', dirty: false, binary: false, maxLen: 0, clipboard: false };
 }
 
 class TextView {
@@ -63,7 +63,7 @@ class TextView {
   }
 
   get title() {
-    const name = (s) => (s.path ? api.path.basename(s.path) : 'New');
+    const name = (s) => (s.path ? api.path.basename(s.path) : s.clipboard ? 'Clipboard' : 'New');
     const dirty = this.sides.left.dirty || this.sides.right.dirty ? '*' : '';
     return `${name(this.sides.left)} <--> ${name(this.sides.right)}${dirty}`;
   }
@@ -142,7 +142,7 @@ class TextView {
     const s = this.sides[side];
     if (p && s.dirty && p !== s.path && !(await Modal.confirm('Open', `Discard unsaved changes to ${api.path.basename(s.path || 'the ' + side + ' side')}?`, 'Discard'))) return;
     Object.assign(s, tvNewSide(), { path: p || '' });
-    this.pathBox[side].input.value = s.path;
+    this.showPath(side);
     this.message = '';
     if (p) {
       try {
@@ -168,6 +168,35 @@ class TextView {
     this.app.updateTabs();
   }
 
+  showPath(side) {
+    const s = this.sides[side], input = this.pathBox[side].input;
+    input.value = s.path;
+    input.placeholder = s.clipboard && !s.path ? 'Clipboard text (not saved)' : side === 'left' ? 'Left file' : 'Right file';
+  }
+
+  // Puts the clipboard's text on one side as an untitled buffer, to compare
+  // a snippet with a file or two snippets with each other; Save asks where.
+  async pasteClipboard(side) {
+    const s = this.sides[side];
+    if (s.dirty && !(await Modal.confirm('Compare Clipboard', `Discard unsaved changes to the ${side} side?`, 'Discard'))) return;
+    const text = await api.readClipboard();
+    if (!text) {
+      this.message = 'The clipboard has no text';
+      this.scroller.refresh();
+      return;
+    }
+    Object.assign(s, tvNewSide(), TextDiff.splitLines(text), { clipboard: true });
+    this.showPath(side);
+    this.message = '';
+    this.undo = [];
+    this.redo = [];
+    this.aligns = [];
+    this.recompare();
+    this.cur = this.anchor = 0;
+    this.gotoSection(1, true);
+    this.app.updateTabs();
+  }
+
   async saveSide(side, forceDialog) {
     const s = this.sides[side];
     let p = s.path;
@@ -183,7 +212,8 @@ class TextView {
     }
     s.path = p;
     s.dirty = false;
-    this.pathBox[side].input.value = p;
+    s.clipboard = false;
+    this.showPath(side);
     return true;
   }
 
@@ -707,19 +737,21 @@ class TextView {
     const s = this.sides;
     [s.left, s.right] = [s.right, s.left];
     this.aligns = this.aligns.map(([l, r]) => [r, l]);
-    this.pathBox.left.input.value = s.left.path;
-    this.pathBox.right.input.value = s.right.path;
+    this.showPath('left');
+    this.showPath('right');
     this.undo = [];
     this.redo = [];
     this.recompare();
   }
 
   async reload() {
-    const paths = [this.sides.left.path, this.sides.right.path];
-    if ((this.sides.left.dirty || this.sides.right.dirty) && !(await Modal.confirm('Reload', 'Discard unsaved changes and reload both files?', 'Reload'))) return;
-    this.sides.left.dirty = this.sides.right.dirty = false;
-    await this.load('left', paths[0]);
-    await this.load('right', paths[1]);
+    // A clipboard side has no file to reload and keeps its text.
+    const sides = ['left', 'right'].filter((side) => this.sides[side].path || !this.sides[side].clipboard);
+    if (sides.some((side) => this.sides[side].dirty) && !(await Modal.confirm('Reload', 'Discard unsaved changes and reload the files?', 'Reload'))) return;
+    for (const side of sides) {
+      this.sides[side].dirty = false;
+      await this.load(side, this.sides[side].path);
+    }
   }
 
   // Unified diff from the left text to the right one as currently shown,
@@ -817,6 +849,9 @@ class TextView {
       case 'Top': this.moveTo(0); break;
       case 'Bottom': this.moveTo(this.vis.length - 1); break;
       case 'CopyText': this.copyText(); break;
+      case 'PasteSide': this.pasteClipboard(this.side); break;
+      case 'PasteLeft': this.pasteClipboard('left'); break;
+      case 'PasteRight': this.pasteClipboard('right'); break;
       case 'CopyPatch': this.copyPatch(); break;
       case 'SavePatch': this.savePatch(); break;
       case 'AlignWith': this.alignPick(); break;

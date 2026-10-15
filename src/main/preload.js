@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('api', {
   rename: call('ops:rename'),
   mkdir: call('ops:mkdir'),
   showInFolder: call('shell:show'),
+  readClipboard: call('clipboard:readText'),
   loadSessions: call('sessions:load'),
   rememberSession: call('sessions:remember'),
   onCommand: (fn) => ipcRenderer.on('menu:command', (_e, command) => fn(command)),

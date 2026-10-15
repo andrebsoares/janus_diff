@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const Dir = require('../core/dircompare');
@@ -133,6 +133,10 @@ function buildMenu() {
         sep,
         item('Copy Line to Right', 'CopyLineRight', 'Ctrl+Shift+R'),
         item('Copy Line to Left', 'CopyLineLeft', 'Ctrl+Shift+L'),
+        sep,
+        item('Compare Clipboard (Current Side)', 'PasteSide', 'Ctrl+Shift+V'),
+        item('Compare Clipboard as Left', 'PasteLeft'),
+        item('Compare Clipboard as Right', 'PasteRight'),
         sep,
         item('Edit Line', 'FullEdit', 'F2'),
         item('Insert Line After', 'InsertItemAfter', 'Ctrl+Enter'),
@@ -312,6 +316,7 @@ function registerIpc() {
   });
   handle('ops:mkdir', (p) => fs.promises.mkdir(p, { recursive: true }));
   handle('shell:show', (p) => shell.showItemInFolder(p));
+  handle('clipboard:readText', async () => (await clipboard.readText()) || '');
 
   handle('sessions:load', loadSessions);
   handle('sessions:remember', (session) => {
