@@ -113,6 +113,44 @@ class VScroller {
   }
 }
 
+// Follows a drag that started with the left button on a VScroller list until
+// the button is released: onMove gets the row under the pointer (clamped to
+// the list), the row boundary nearest to it and the pointer position. Above
+// or below `area` the list keeps scrolling, faster the further out the
+// pointer is. onEnd runs once at the end; returns a function that ends it.
+function dragRows(area, scroller, onMove, onEnd) {
+  let x = 0, y = null, done = false;
+  const update = () => {
+    if (y === null) return;
+    const r = area.getBoundingClientRect(), bottom = r.top + area.clientHeight;
+    const out = y < r.top ? y - r.top : y > bottom ? y - bottom : 0;
+    if (out) scroller.bar.scrollTop += Math.sign(out) * Math.max(2, Math.round(Math.abs(out) / 3));
+    const pos = (Math.max(r.top, Math.min(bottom - 1, y)) - r.top + scroller.bar.scrollTop) / scroller.rowH;
+    const last = Math.max(0, scroller.count - 1);
+    onMove({ row: Math.max(0, Math.min(last, Math.floor(pos))), gap: Math.max(0, Math.min(scroller.count, Math.round(pos))), x, y });
+  };
+  const move = (e) => {
+    if (!(e.buttons & 1)) { stop(); return; }
+    x = e.clientX;
+    y = e.clientY;
+    update();
+  };
+  const timer = setInterval(update, 30);
+  const stop = () => {
+    if (done) return;
+    done = true;
+    clearInterval(timer);
+    document.removeEventListener('mousemove', move, true);
+    document.removeEventListener('mouseup', stop, true);
+    window.removeEventListener('blur', stop);
+    if (onEnd) onEnd();
+  };
+  document.addEventListener('mousemove', move, true);
+  document.addEventListener('mouseup', stop, true);
+  window.addEventListener('blur', stop);
+  return stop;
+}
+
 // Popup menu at a mouse position. items: [[label, shortcut, run, disabled], '|'].
 // Closes on a pick, a click elsewhere, a key, a scroll or losing the window.
 const ContextMenu = {

@@ -12,7 +12,8 @@ const TV_KEYS = {
   'Ctrl+N': 'DiffNext', 'Ctrl+P': 'DiffPrev', 'Ctrl+F': 'Find', F3: 'FindNext', 'Shift+F3': 'FindPrev',
   'Ctrl+G': 'GoTo', Del: 'Delete', 'Alt+Left': 'GoLeft', 'Alt+Right': 'GoRight', F6: 'GoNext', 'Shift+F6': 'GoNext',
   Up: 'Up', Down: 'Down', PageUp: 'PageUp', PageDown: 'PageDown', 'Ctrl+Home': 'Top', 'Ctrl+End': 'Bottom',
-  'Shift+Up': 'SelUp', 'Shift+Down': 'SelDown', 'Ctrl+C': 'CopyText', 'Ctrl+Shift+V': 'PasteSide', 'Ctrl+Shift+C': 'CopyPatch', F7: 'AlignWith', Esc: 'AlignCancel',
+  Home: 'Top', End: 'Bottom', 'Shift+Up': 'SelUp', 'Shift+Down': 'SelDown', 'Shift+PageUp': 'SelPageUp', 'Shift+PageDown': 'SelPageDown',
+  'Shift+Home': 'SelTop', 'Shift+End': 'SelBottom', 'Ctrl+Shift+Home': 'SelTop', 'Ctrl+Shift+End': 'SelBottom', 'Ctrl+C': 'CopyText', 'Ctrl+Shift+V': 'PasteSide', 'Ctrl+Shift+C': 'CopyPatch', F7: 'AlignWith', Esc: 'AlignCancel',
 };
 
 const TV_TYPE_CAPTION = {
@@ -110,6 +111,10 @@ class TextView {
     const bar = h('div', { class: 'vscroll' });
     this.body = h('div', { class: 'tv-body' }, this.thumb, this.panes.left, this.panes.right, bar);
     this.scroller = new VScroller(this.body, bar, TV_ROW, (first, n, off) => this.render(first, n, off));
+    // Shown next to a selection of several lines: copies them to the other side.
+    this.selBtn = h('button', { class: 'tv-selbtn', tabIndex: -1, onmousedown: (e) => e.preventDefault(),
+      onclick: () => this.copyLines(this.side === 'left' ? 'right' : 'left') });
+    this.body.append(this.selBtn);
 
     this.details = h('div', { class: 'tv-details' });
     this.status = h('div', { class: 'statusbar' });
@@ -404,17 +409,19 @@ class TextView {
       if (row.manual) cls += ' manual';
       if (this.alignFrom && this.alignFrom.side === side && this.alignFrom.line === idx) cls += ' align-src';
     }
-    const lo = Math.min(this.cur, this.anchor), hi = Math.max(this.cur, this.anchor);
-    if (k >= lo && k <= hi && lo !== hi) cls += ' sel';
+    const sel = this.selection();
+    const inSel = sel.n > 1 && k >= sel.lo && k <= sel.hi;
+    if (inSel) cls += side === this.side ? ' sel sel-src' : ' sel';
     if (k === this.cur) cls += side === this.side ? ' cur' : ' cur-other';
     // Gutter: the section's copy button on its first row with a line on this
     // side, and on every differing row a button that copies just that row
-    // (from a gap it removes the other side's line).
+    // (from a gap it removes the other side's line), or the whole selection
+    // when the row is part of one.
     let btn = '', lineBtn = '';
     if (kind !== 'same') {
       const to = side === 'left' ? 'right' : 'left';
       if (this.sections[row.sec][key] === this.vis[k]) btn = `<span class="copy-btn" title="Copy section to ${to}">${side === 'left' ? '⇨' : '⇦'}</span>`;
-      const what = idx >= 0 ? `Copy this line to ${to}` : `Remove the ${to} line`;
+      const what = inSel ? `Copy ${sel.n} selected lines to ${side === 'left' ? 'Right' : 'Left'}` : idx >= 0 ? `Copy this line to ${to}` : `Remove the ${to} line`;
       lineBtn = `<span class="line-btn" title="${what} (Shift+click: whole section)">${side === 'left' ? '→' : '←'}</span>`;
     }
     const num = this.showNums ? `<span class="num">${idx >= 0 ? idx + 1 : ''}</span>` : '';
@@ -432,8 +439,43 @@ class TextView {
       el.style.minWidth = width + 'px';
     }
     this.body.classList.toggle('aligning', !!this.alignFrom);
+    const lines = this.selection().n > 1 ? 'Lines' : 'Line';
+    for (const [cmd, arrow] of [['CopyLineRight', '→'], ['CopyLineLeft', '←']]) {
+      if (this.buttons[cmd].textContent !== `${arrow} ${lines}`) this.buttons[cmd].textContent = `${arrow} ${lines}`;
+    }
+    this.placeSelButton();
     this.renderDetails();
     this.drawThumbViewport();
+  }
+
+  // Visible rows from the anchor to the cursor; n > 1 is a selection.
+  selection() {
+    const lo = Math.min(this.cur, this.anchor), hi = Math.max(this.cur, this.anchor);
+    return { lo, hi, n: this.vis.length ? hi - lo + 1 : 0 };
+  }
+
+  // The floating "copy N lines" button sits in the selection's pane at the
+  // edge facing the other side, just below the selection (or above it when
+  // that is off screen), while the selection has differences and is visible.
+  placeSelButton() {
+    const b = this.selBtn, sel = this.selection();
+    const top = this.scroller.bar.scrollTop, viewH = this.panes.left.clientHeight;
+    const show = sel.n > 1 && !this.dragging && !this.alignFrom && (sel.hi + 1) * TV_ROW > top && sel.lo * TV_ROW < top + viewH
+      && this.targetRows(true).some((i) => this.kind(this.rows[i]) !== 'same');
+    b.style.display = show ? '' : 'none';
+    if (!show) return;
+    const toRight = this.side === 'left';
+    const label = `${toRight ? '→' : '←'} Copy ${sel.n} lines`;
+    if (b.textContent !== label) b.textContent = label;
+    b.title = `Copy the ${sel.n} selected lines to the ${toRight ? 'right' : 'left'} (Ctrl+Shift+${toRight ? 'R' : 'L'})`;
+    const pane = this.panes[this.side], bh = b.offsetHeight;
+    let y = (sel.hi + 1) * TV_ROW - top + 2;
+    if (y + bh > viewH) y = sel.lo * TV_ROW - top - bh - 2;
+    y = Math.max(2, Math.min(viewH - bh - 2, y));
+    const tx = this.rowsEl[this.side].querySelector('.row .tx');
+    const x = toRight ? pane.clientWidth - b.offsetWidth - 8 : (tx ? tx.offsetLeft : 90) + 8;
+    b.style.top = pane.offsetTop + y + 'px';
+    b.style.left = pane.offsetLeft + x + 'px';
   }
 
   renderDetails() {
@@ -452,7 +494,9 @@ class TextView {
     const secs = this.sections.filter((s) => s.important || !this.ignoreInsig).length;
     const info = (s) => `${s.encoding.toUpperCase()} ${s.eol === '\r\n' ? 'PC' : s.eol === '\r' ? 'Mac' : 'Unix'}${s.dirty ? ' • modified' : ''}`;
     const pos = row ? `${this.side === 'left' ? 'Left' : 'Right'} line ${row[this.side === 'left' ? 'l' : 'r'] + 1 || '—'}` : '';
-    this.status.innerHTML = `<span class="st-main">${esc(this.message || `${secs} difference section(s)`)}</span>`
+    const sel = this.selection(), toRight = this.side === 'left';
+    const hint = sel.n > 1 && `${sel.n} lines selected — Ctrl+Shift+${toRight ? 'R' : 'L'} or the ${toRight ? '→' : '←'} arrow copies them to the ${toRight ? 'right' : 'left'}`;
+    this.status.innerHTML = `<span class="st-main">${esc(hint || this.message || `${secs} difference section(s)`)}</span>`
       + `<span>${row ? TV_TYPE_CAPTION[this.kind(row) === 'same' ? 'same' : row.type] : ''}</span>`
       + `<span>${st.important} important, ${st.insig} unimportant line(s)</span><span>${pos}</span>`
       + `<span>${esc(info(L))} | ${esc(info(R))}</span>`;
@@ -498,10 +542,16 @@ class TextView {
     const rowEl = e.target.closest('.row');
     if (!rowEl) return;
     const k = Number(rowEl.dataset.k);
+    const sel = this.selection(), inSel = k >= sel.lo && k <= sel.hi;
     this.side = side;
     // A right-click inside the selection keeps it for the context menu.
-    if (e.button === 2 && k >= Math.min(this.cur, this.anchor) && k <= Math.max(this.cur, this.anchor)) {
+    if (e.button === 2 && inSel) {
       this.scroller.refresh();
+      return;
+    }
+    // A row's arrow inside a selection of several lines copies all of them.
+    if (e.button === 0 && !e.shiftKey && sel.n > 1 && inSel && !this.alignFrom && e.target.classList.contains('line-btn')) {
+      this.copyLines(side === 'left' ? 'right' : 'left');
       return;
     }
     this.cur = k;
@@ -531,7 +581,19 @@ class TextView {
     if (e.detail === 2) {
       e.preventDefault();
       this.editLine();
+      return;
     }
+    // Dragging with the button held extends the selection from the clicked
+    // row (or from the anchor, after a Shift+click).
+    this.dragging = true;
+    dragRows(this.panes[side], this.scroller, ({ row }) => {
+      if (row === this.cur) return;
+      this.cur = row;
+      this.scroller.refresh();
+    }, () => {
+      this.dragging = false;
+      this.scroller.refresh();
+    });
   }
 
   moveTo(k, extend, center) {
@@ -906,8 +968,12 @@ class TextView {
       case 'SelDown': this.moveTo(this.cur + 1, true); break;
       case 'PageUp': this.moveTo(this.cur - this.scroller.pageRows); break;
       case 'PageDown': this.moveTo(this.cur + this.scroller.pageRows); break;
+      case 'SelPageUp': this.moveTo(this.cur - this.scroller.pageRows, true); break;
+      case 'SelPageDown': this.moveTo(this.cur + this.scroller.pageRows, true); break;
       case 'Top': this.moveTo(0); break;
       case 'Bottom': this.moveTo(this.vis.length - 1); break;
+      case 'SelTop': this.moveTo(0, true); break;
+      case 'SelBottom': this.moveTo(this.vis.length - 1, true); break;
       case 'CopyText': this.copyText(); break;
       case 'PasteSide': this.pasteClipboard(this.side); break;
       case 'PasteLeft': this.pasteClipboard('left'); break;

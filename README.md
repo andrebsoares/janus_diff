@@ -77,7 +77,12 @@ git difftool --dir-diff      # todas as mudanças numa comparação de pastas
   manual (F7 numa linha, depois clique na linha correspondente do outro
   lado), copiar seção (Ctrl+R / Ctrl+L) ou só a linha (Ctrl+Shift+R / L,
   setas → / ← na margem de cada linha diferente, ou clique direito) entre
-  os lados, editar, desfazer/refazer, salvar preservando
+  os lados. Para passar um trecho, selecione as linhas arrastando o mouse
+  (como num editor de texto; passar da borda rola a lista) ou com Shift+clique
+  / Shift+setas, PgUp/PgDn, Home/End; depois clique numa seta → / ← dentro da
+  seleção, no botão "→ Copy N lines" que aparece ao lado dela ou use
+  Ctrl+Shift+R / L: o bloco inteiro vai para o outro lado num passo só de
+  desfazer. Também é possível editar, desfazer/refazer, salvar preservando
   codificação e fim de linha, miniatura, localizar, ir para linha, copiar
   (Ctrl+Shift+C) ou salvar as diferenças como diff unificado (patch),
   comparar o texto da área de transferência (Ctrl+Shift+V) e recarregar

@@ -168,6 +168,23 @@ button { font: inherit; color: inherit; }
 .row.cur .tx { outline: 1px solid #000; outline-offset: -1px; }
 .row.cur-other .tx { outline: 1px dotted #777; outline-offset: -1px; }
 .row.cur .num { background: #c9d9ee; color: #000; }
+.row.sel .num { background: #bcd4f2; color: #000; }
+.row.sel-src .tx { box-shadow: inset 0 0 0 100px rgba(40, 110, 220, 0.32); }
+.row.sel-src .num { background: var(--accent); color: #fff; }
+.tv-selbtn {
+  position: absolute;
+  z-index: 5;
+  padding: 1px 9px;
+  border: 1px solid #084c90;
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  font: 12px var(--ui);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.tv-selbtn:hover { background: #084c90; }
 .row.manual .num { box-shadow: inset 3px 0 #d98200; }
 .row.align-src .tx { outline: 2px solid #d98200; outline-offset: -2px; }
 .tv-body.aligning .tv-pane { cursor: crosshair; }
