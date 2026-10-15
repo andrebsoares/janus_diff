@@ -202,7 +202,8 @@ button { font: inherit; color: inherit; }
 /* ---- folder compare ---- */
 
 .dv-paths { display: grid; grid-template-columns: 1fr 1fr; padding-right: 16px; }
-.dv-grid { display: grid; grid-template-columns: minmax(0, 1fr) 84px 132px 24px minmax(0, 1fr) 84px 132px; }
+/* Modified holds "YYYY-MM-DD hh:mm:ss": 19 tabular digits wide plus padding, whatever the font. */
+.dv-grid { display: grid; grid-template-columns: minmax(0, 1fr) 84px calc(19ch + 14px) 24px minmax(0, 1fr) 84px calc(19ch + 14px); font-variant-numeric: tabular-nums; }
 
 .dv-head { padding-right: 16px; border-bottom: 1px solid var(--border); background: var(--chrome); }
 .dv-head span { padding: 3px 6px; border-right: 1px solid #c4c4c4; }
