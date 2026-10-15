@@ -20,6 +20,8 @@
     "publish": null,
     "files": [
       "src/**/*",
+      "docs/AJUDA.md",
+      "docs/screenshots/*.png",
       "package.json"
     ],
     "win": {

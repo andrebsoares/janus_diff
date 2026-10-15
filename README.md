@@ -90,7 +90,8 @@ git difftool --dir-diff      # todas as mudanças numa comparação de pastas
   comparar o texto da área de transferência (Ctrl+Shift+V) e recarregar
   sozinho o arquivo alterado por outro programa (com Ctrl+Z para voltar).
 - **Hex:** comparação byte a byte.
-- Abas, sessões recentes, arrastar e soltar, lista de atalhos (F1).
+- Abas, sessões recentes, arrastar e soltar, lista de atalhos (F1) e guia do
+  usuário (**Help → User Guide**, conteúdo em [`docs/AJUDA.md`](docs/AJUDA.md)).
 
 ## Estrutura
 

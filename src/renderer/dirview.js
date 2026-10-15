@@ -92,6 +92,27 @@ class DirView {
     this.el = h('div', { class: 'view dirview' }, tb.bar,
       h('div', { class: 'pathbar dv-paths' }, this.pathBox.left.box, this.pathBox.right.box),
       this.head, this.body, this.status);
+    this.el.addEventListener('dragover', (e) => e.preventDefault());
+    this.el.addEventListener('drop', (e) => this.onDrop(e));
+  }
+
+  // Folders dropped from Explorer: two at once fill both sides, one goes to
+  // the half of the window it was dropped on.
+  onDrop(e) {
+    e.preventDefault();
+    const rect = this.el.getBoundingClientRect();
+    this.dropPaths([...e.dataTransfer.files].map((f) => api.pathForFile(f)).filter(Boolean), e.clientX < rect.left + rect.width / 2 ? 'left' : 'right');
+  }
+
+  async dropPaths(paths, side) {
+    if (!paths.length) return;
+    const sides = paths.length > 1 ? ['left', 'right'] : [side];
+    for (let i = 0; i < sides.length; i++) {
+      const st = await api.stat(paths[i]);
+      if (!st.exists || !st.isDir) { this.notice(`${api.path.basename(paths[i])} is not a folder — drop folders here, or open files from Text Compare`); return; }
+    }
+    sides.forEach((side, i) => { this.roots[side] = paths[i]; });
+    this.refresh();
   }
 
   onShow() {

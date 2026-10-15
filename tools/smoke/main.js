@@ -58,6 +58,31 @@ app.whenReady().then(async () => {
   await sleep(1200); await shot('7-hex');
   console.log('hex', await js(`JSON.stringify({type: App.active.type, diffBytes: App.active.diffBytes})`));
   await js(`App.command('TabNew')`); await sleep(500); await shot('8-home');
+  await js(`App.command('Guide')`); await sleep(1500); await shot('10-guide');
+  const guide = await js(`JSON.stringify({type: App.active.type, toc: document.querySelectorAll('.help-toc-item').length, imgs: [...App.active.content.querySelectorAll('img')].map(i => i.naturalWidth)})`);
+  console.log('guide', guide);
+  const g = guide && JSON.parse(guide);
+  if (!g || g.type !== 'help' || g.toc < 8 || !g.imgs.length || g.imgs.some((w) => !w)) fail('User Guide: ' + guide);
+  await js(`App.command('Guide')`);
+  if (await js(`App.tabs.filter(t => t.type === 'help').length`) !== 1) fail('Guide opened a second tab');
+  // The menu disables the commands the active tab does not handle.
+  const { Menu } = require('electron');
+  const enabled = (label) => {
+    const find = (items) => { for (const it of items) { if (it.label === label) return it; const s = it.submenu && find(it.submenu.items); if (s) return s; } return null; };
+    const it = find(Menu.getApplicationMenu().items);
+    return it && it.enabled;
+  };
+  for (const [tab, label, want] of [[0, 'Save', false], [0, 'Mirror to Right', true], [1, 'Save', true], [1, 'Show Orphans', false], [2, 'Go To Line...', true], [2, 'Session Settings...', false]]) {
+    await js(`App.activate(App.tabs[${tab}])`); await sleep(300);
+    if (enabled(label) !== want) fail(`menu "${label}" enabled=${enabled(label)} on tab ${tab}, expected ${want}`);
+  }
+  // A folder dropped on the right half of a Folder Compare becomes the right side.
+  await js(`App.activate(App.tabs[0])`);
+  const drop = await js(`(async () => { const v = App.active; const r = v.roots.right;
+    await v.dropPaths([v.roots.left], 'right');
+    const got = v.roots.right; v.roots.right = r; await v.refresh(); return got === v.roots.left ? 'ok' : 'wrong ' + got; })()`);
+  console.log('drop', drop);
+  if (drop !== 'ok') fail('folder drop: ' + drop);
   await js(`{ App.activate(App.tabs[0]); App.active.sync('MirrorRight'); } 0`); await sleep(500); await shot('9-sync-confirm');
   await js(`document.querySelector('.dlg-btn.default').click()`); await sleep(2500);
   // Failed deletions (no recycle bin, e.g. in a container) offer a permanent

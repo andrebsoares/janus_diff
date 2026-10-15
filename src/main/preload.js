@@ -34,6 +34,8 @@ const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 contextBridge.exposeInMainWorld('api', {
   args: call('app:args'),
   version: call('app:version'),
+  guide: call('app:guide'),
+  setMenuView: call('menu:view'),
   pickFolder: call('dialog:pickFolder'),
   pickFile: call('dialog:pickFile'),
   saveFileDialog: call('dialog:saveFile'),

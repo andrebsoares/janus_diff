@@ -7,19 +7,22 @@ const APP_KEYS = {
 
 const DISK_CHECK_MS = 1500;
 
+// Groups of [keys, description]; SHORTCUT_COLUMNS lays them out in the F1 dialog.
 const SHORTCUT_HELP = [
-  ['All views', [['Ctrl+T', 'New tab'], ['Ctrl+W', 'Close tab'], ['Ctrl+Tab', 'Next tab'], ['F5', 'Refresh / reload'], ['Ctrl+N / Ctrl+P', 'Next / previous difference'], ['Ctrl+R / Ctrl+L', 'Copy to right / left']]],
+  ['All views', [['Ctrl+T', 'New tab'], ['Ctrl+W, Ctrl+F4', 'Close tab'], ['Ctrl+Tab / Ctrl+Shift+Tab', 'Next / previous tab'], ['F5', 'Refresh / reload'], ['Ctrl+N / Ctrl+P', 'Next / previous difference'], ['F1', 'This list']]],
   ['Text Compare', [['Ctrl+R / Ctrl+L', 'Copy section (or selection) to right / left'], ['Ctrl+Shift+R / L', 'Copy only the line(s) to right / left, then go to the next difference'],
     ['Click → / ←', 'Copy that line, or the whole selection (Shift+click: its section)'],
     ['Drag, Shift+click', 'Select lines; then → / ←, Ctrl+Shift+R / L or the floating button copies them'],
-    ['Shift+Up/Down/PgUp/PgDn/Home/End', 'Extend the selection'], ['Drag the selection', 'Drop it on the other pane to insert a copy there (Esc cancels)'], ['Right-click', 'Copy line / section menu'], ['F2', 'Edit line'], ['F7', 'Align line with a line on the other side'], ['Ctrl+Enter', 'Insert line after'], ['Del', 'Delete line(s)'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], ['Ctrl+S, F12', 'Save, Save As'], ['Ctrl+F, F3', 'Find, find next'], ['Ctrl+G', 'Go to line'], ['Ctrl+D', 'Select section'], ['Alt+Left / Right', 'Focus left / right pane'], ['Ctrl+Shift+C', 'Copy as unified diff (patch)'], ['Ctrl+Shift+V', 'Compare the clipboard text on this side']]],
-  ['Folder Compare', [['Enter', 'Open folder / compare files'], ['Ctrl+M', 'Compare contents of selection'], ['Ctrl+E', 'Exclude selection'], ['Del, Shift+Del', 'Delete, permanent delete'], ['F2', 'Rename'], ['Ctrl+A', 'Select all'], ['Drag, Shift+click, Ctrl+click', 'Select a range / add or remove an item'], ['Shift+Up/Down/PgUp/PgDn/Home/End', 'Extend the selection'], ['Ctrl+F', 'Find filename'], ['Left / Right', 'Collapse / expand'], ['Backspace', 'Up one level'], ['Ctrl+Alt+L', 'Legend']]],
+    ['Shift+Up/Down, PgUp/PgDn, Home/End', 'Extend the selection'], ['Drag the selection', 'Drop it on the other pane to insert a copy there (Esc cancels)'], ['Right-click', 'Copy line / section menu'], ['F2, Enter', 'Edit line'], ['F7', 'Align line with a line on the other side (Esc cancels)'], ['Ctrl+Enter', 'Insert line after'], ['Del', 'Delete line(s)'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], ['Ctrl+S, F12', 'Save, Save As'], ['Ctrl+F, F3, Shift+F3', 'Find, find next, find previous'], ['Ctrl+G', 'Go to line'], ['Ctrl+D', 'Select section'], ['Ctrl+C', 'Copy the text of the line(s)'], ['Alt+Left / Right, F6', 'Focus left / right pane, switch pane'], ['Ctrl+Shift+C', 'Copy as unified diff (patch)'], ['Ctrl+Shift+V', 'Compare the clipboard text on this side']]],
+  ['Folder Compare', [['Enter', 'Open folder / compare files'], ['Ctrl+R / Ctrl+L', 'Copy to right / left'], ['Ctrl+M', 'Compare contents of selection'], ['Ctrl+E', 'Exclude selection'], ['Del, Shift+Del', 'Delete, permanent delete'], ['F2', 'Rename'], ['Ctrl+A', 'Select all'], ['Drag, Shift+click, Ctrl+click', 'Select a range / add or remove an item'], ['Shift+Up/Down, PgUp/PgDn, Home/End', 'Extend the selection'], ['Ctrl+F, F3, Shift+F3', 'Find filename, next, previous'], ['Left / Right', 'Collapse / expand'], ['Backspace', 'Up one level'], ['Alt+Left / Right', 'Active side (delete, rename, new folder)'], ['Ctrl+Alt+L', 'Legend']]],
+  ['Hex Compare', [['Ctrl+G', 'Go to offset (hex)'], ['Ctrl+Home / Ctrl+End', 'Start / end of the files'], ['Up/Down/PgUp/PgDn', 'Move']]],
 ];
+const SHORTCUT_COLUMNS = [['All views', 'Hex Compare'], ['Text Compare'], ['Folder Compare']];
 
 // Small marker identifying a session type in tabs and on the home view.
 function typeGlyph(type) {
   if (type === 'dir') return h('span', { class: 'ico dir same' });
-  return { home: '⌂', text: '≡', hex: '01' }[type] || '';
+  return { home: '⌂', text: '≡', hex: '01', help: '?' }[type] || '';
 }
 
 class HomeView {
@@ -36,7 +39,9 @@ class HomeView {
         h('h2', {}, 'Start new session'),
         tile('Folder Compare', 'Compare two folder trees side by side and synchronize them', 'NewDir', 'dir'),
         tile('Text Compare', 'Compare and edit two text files line by line', 'NewText', 'text'),
-        tile('Hex Compare', 'Compare two binary files byte by byte', 'NewHex', 'hex')),
+        tile('Hex Compare', 'Compare two binary files byte by byte', 'NewHex', 'hex'),
+        h('h2', { class: 'home-gap' }, 'Help'),
+        tile('User Guide', 'How to use every feature of Janus Diff', 'Guide', 'help')),
       h('div', { class: 'home-col wide' }, h('h2', {}, 'Recent sessions'), this.list));
   }
 
@@ -114,7 +119,7 @@ const App = {
   },
 
   openSession(s, replace) {
-    const View = { dir: DirView, text: TextView, hex: HexView }[s.type];
+    const View = { dir: DirView, text: TextView, hex: HexView, help: HelpView }[s.type];
     if (!View) return;
     const home = replace && this.active && this.active.type === 'home' ? this.active : null;
     this.add(new View(this, s.left, s.right));
@@ -130,6 +135,7 @@ const App = {
   activate(view) {
     this.active = view;
     for (const t of this.tabs) t.el.classList.toggle('active', t === view);
+    api.setMenuView(view.type);
     this.updateTabs();
     if (view.onShow) view.onShow();
   },
@@ -186,9 +192,18 @@ const App = {
         return;
       }
       case 'Shortcuts':
-        Modal.show('Keyboard Shortcuts', h('div', { class: 'shortcuts' }, SHORTCUT_HELP.map(([group, keys]) => h('div', {},
-          h('div', { class: 'dlg-heading' }, group), keys.map(([k, d]) => h('div', { class: 'sc-row' }, h('kbd', {}, k), h('span', {}, d)))))), [['Close', true, true]]);
+        Modal.show('Keyboard Shortcuts', h('div', { class: 'shortcuts' }, SHORTCUT_COLUMNS.map((names) => h('div', {},
+          SHORTCUT_HELP.filter(([group]) => names.includes(group)).map(([group, keys]) => h('div', { class: 'sc-group' },
+            h('div', { class: 'dlg-heading' }, group), keys.map(([k, d]) => h('div', { class: 'sc-row' }, h('kbd', {}, k), h('span', {}, d)))))))),
+        [['User Guide', 'guide'], ['Close', true, true]]).then((v) => { if (v === 'guide') this.command('Guide'); });
         return;
+      case 'Guide': {
+        // One guide tab; opening it again brings that tab forward.
+        const open = this.tabs.find((t) => t.type === 'help');
+        if (open) this.activate(open);
+        else this.openSession({ type: 'help' }, true);
+        return;
+      }
       case 'About':
         api.version().then((v) => Modal.message('About', `Janus Diff ${v}\n\nAn independent folder, text and hex comparison tool.`));
         return;

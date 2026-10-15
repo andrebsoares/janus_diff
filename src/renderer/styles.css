@@ -310,6 +310,31 @@ button { font: inherit; color: inherit; }
 .home-kind { color: var(--accent); }
 .home-paths { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-time, .home-empty { color: #777; }
+.homeview h2.home-gap { margin-top: 14px; }
+
+/* ---- user guide ---- */
+
+.helpview { flex-direction: row; background: var(--paper); }
+.help-toc { flex: none; width: 240px; padding: 16px 8px 16px 14px; overflow: auto; border-right: 1px solid #d0d0d0; background: var(--chrome); }
+.help-toc-item { display: block; padding: 3px 6px; border-radius: 3px; color: #204a7a; text-decoration: none; }
+.help-toc-item:hover { background: #dbe8f6; }
+.help-toc-item.lvl2 { margin-top: 6px; font-weight: 600; }
+.help-toc-item.lvl3 { padding-left: 18px; }
+.help-content { flex: 1; min-width: 0; padding: 12px 36px 40px; overflow: auto; outline: none; line-height: 1.5; user-select: text; }
+.help-content > * { max-width: 920px; }
+.help-content h1 { font-size: 22px; color: #204a7a; }
+.help-content h2 { margin-top: 28px; padding-bottom: 3px; border-bottom: 1px solid #d0d0d0; font-size: 18px; color: #204a7a; }
+.help-content h3 { margin-top: 20px; font-size: 15px; color: #204a7a; }
+.help-content hr { border: none; border-top: 1px solid #e0e0e0; margin: 24px 0; }
+.help-content code, .help-content pre { font-family: var(--mono); font-size: 12px; background: #f3f3f3; border-radius: 3px; }
+.help-content code { padding: 0 3px; }
+.help-content pre { padding: 8px 10px; overflow: auto; }
+.help-content pre code { padding: 0; background: none; }
+.help-content table { border-collapse: collapse; margin: 8px 0; }
+.help-content th, .help-content td { padding: 4px 10px; border: 1px solid #d0d0d0; text-align: left; vertical-align: top; }
+.help-content th { background: var(--chrome); }
+.help-content img { max-width: 100%; border: 1px solid #c4c4c4; }
+.help-content a { color: var(--accent); }
 
 /* ---- dialogs ---- */
 
@@ -332,5 +357,6 @@ button { font: inherit; color: inherit; }
 .legend-row { display: flex; align-items: center; gap: 8px; }
 .dlg:has(.shortcuts) { max-width: 94vw; }
 .shortcuts { display: grid; grid-template-columns: repeat(3, auto); gap: 4px 22px; }
+.sc-group + .sc-group { margin-top: 14px; }
 .sc-row { display: grid; grid-template-columns: 120px auto; gap: 8px; padding: 2px 0; }
 kbd { font: 11px var(--ui); color: #204a7a; }

@@ -60,15 +60,31 @@ function send(command) {
   if (win && !win.isDestroyed()) win.webContents.send('menu:command', command);
 }
 
+// Commands each kind of tab handles; the menu disables the others. Commands
+// listed in none of them (tabs, new sessions, help) are always enabled.
+const COMMON_COMMANDS = ['Swap', 'Refresh', 'BrowseLeft', 'BrowseRight', 'DiffNext', 'DiffPrev', 'FavCompareAll', 'FavDiff', 'FavSame'];
+const VIEW_COMMANDS = {
+  dir: [...COMMON_COMMANDS, 'Rules', 'CopyRight', 'CopyLeft', 'Open', 'CompareContents', 'Exclude', 'Delete', 'PermanentDelete', 'Rename', 'NewFolder',
+    'UpdateRight', 'UpdateLeft', 'UpdateBoth', 'MirrorRight', 'MirrorLeft', 'SelectAll', 'ExpandAll', 'CollapseAll', 'Find', 'FindNext', 'FindPrev', 'FavOrphan', 'Legend'],
+  text: [...COMMON_COMMANDS, 'Rules', 'Save', 'SaveAs', 'SavePatch', 'CopyRight', 'CopyLeft', 'Undo', 'Redo', 'CopyPatch', 'CopyLineRight', 'CopyLineLeft',
+    'PasteSide', 'PasteLeft', 'PasteRight', 'FullEdit', 'InsertItemAfter', 'AlignWith', 'SelectAll', 'SelectSection', 'Find', 'FindNext', 'FindPrev', 'GoTo',
+    'InsigIgnored', 'ShowWS', 'ShowItemNum'],
+  hex: [...COMMON_COMMANDS, 'GoTo'],
+};
+const VIEW_SPECIFIC = new Set(Object.values(VIEW_COMMANDS).flat());
+
 // Shortcuts are displayed here but handled by the renderer, because the same
 // key means different things in different views (Ctrl+N, F5, F7...).
-function item(label, command, accelerator) {
-  return { label, accelerator, registerAccelerator: false, click: () => send(command) };
+function menuItem(label, command, accelerator, view) {
+  const enabled = !VIEW_SPECIFIC.has(command) || (VIEW_COMMANDS[view] || []).includes(command);
+  return { label, accelerator, enabled, registerAccelerator: false, click: () => send(command) };
 }
 
 const sep = { type: 'separator' };
 
-function buildMenu() {
+// view: the type of the active tab (home, dir, text, hex, help).
+function buildMenu(view) {
+  const item = (label, command, accelerator) => menuItem(label, command, accelerator, view);
   return Menu.buildFromTemplate([
     {
       label: '&Session',
@@ -107,6 +123,7 @@ function buildMenu() {
         item('Compare Contents of Selection...', 'CompareContents', 'Ctrl+M'),
         item('Exclude from Comparison', 'Exclude', 'Ctrl+E'),
         item('Delete', 'Delete', 'Delete'),
+        item('Delete Permanently', 'PermanentDelete', 'Shift+Delete'),
         item('Rename', 'Rename', 'F2'),
         item('New Folder...', 'NewFolder'),
         sep,
@@ -142,6 +159,7 @@ function buildMenu() {
         item('Insert Line After', 'InsertItemAfter', 'Ctrl+Enter'),
         item('Align With...', 'AlignWith', 'F7'),
         item('Select All', 'SelectAll', 'Ctrl+A'),
+        item('Select Section', 'SelectSection', 'Ctrl+D'),
         item('Expand All', 'ExpandAll'),
         item('Collapse All', 'CollapseAll'),
       ],
@@ -197,7 +215,7 @@ function buildMenu() {
     },
     {
       label: '&Help',
-      submenu: [item('Keyboard Shortcuts', 'Shortcuts', 'F1'), item('About', 'About')],
+      submenu: [item('User Guide', 'Guide'), item('Keyboard Shortcuts', 'Shortcuts', 'F1'), sep, item('About', 'About')],
     },
   ]);
 }
@@ -217,7 +235,7 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  Menu.setApplicationMenu(buildMenu());
+  Menu.setApplicationMenu(buildMenu('home'));
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
@@ -243,6 +261,21 @@ async function probeBinary(p) {
   }
 }
 
+// The User Guide's Markdown, with its images inlined as data URLs so the
+// renderer can show them under its content security policy.
+async function readGuide() {
+  const dir = path.join(__dirname, '..', '..', 'docs');
+  const md = await fs.promises.readFile(path.join(dir, 'AJUDA.md'), 'utf8');
+  const images = new Map();
+  for (const [, src] of md.matchAll(/!\[[^\]]*\]\(([^)\s]+\.png)\)/g)) {
+    if (images.has(src)) continue;
+    try {
+      images.set(src, 'data:image/png;base64,' + (await fs.promises.readFile(path.join(dir, src))).toString('base64'));
+    } catch { /* a missing picture leaves a broken image */ }
+  }
+  return md.replace(/(!\[[^\]]*\]\()([^)\s]+\.png)\)/g, (m, head, src) => (images.has(src) ? head + images.get(src) + ')' : m));
+}
+
 // Runs one file operation per item and reports the failures, with the items
 // that failed, instead of stopping at the first one.
 async function runOps(items, fn) {
@@ -263,6 +296,14 @@ function registerIpc() {
 
   handle('app:args', () => startPaths);
   handle('app:version', () => app.getVersion());
+  handle('app:guide', readGuide);
+
+  let menuView = 'home';
+  handle('menu:view', (view) => {
+    if (view === menuView) return;
+    menuView = view;
+    Menu.setApplicationMenu(buildMenu(view));
+  });
 
   handle('dialog:pickFolder', async (start) => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], defaultPath: start || undefined });
