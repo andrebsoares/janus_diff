@@ -114,7 +114,9 @@ class TextView {
     // Shown next to a selection of several lines: copies them to the other side.
     this.selBtn = h('button', { class: 'tv-selbtn', tabIndex: -1, onmousedown: (e) => e.preventDefault(),
       onclick: () => this.copyLines(this.side === 'left' ? 'right' : 'left') });
-    this.body.append(this.selBtn);
+    this.dropMark = h('div', { class: 'tv-dropmark' }, h('span'));
+    this.dropMark.style.display = 'none';
+    this.body.append(this.selBtn, this.dropMark);
 
     this.details = h('div', { class: 'tv-details' });
     this.status = h('div', { class: 'statusbar' });
@@ -554,6 +556,10 @@ class TextView {
       this.copyLines(side === 'left' ? 'right' : 'left');
       return;
     }
+    if (e.button === 0 && !e.shiftKey && sel.n > 1 && inSel && !this.alignFrom && e.detail === 1 && !e.target.classList.contains('copy-btn')) {
+      this.dragBlock(e, side, k);
+      return;
+    }
     this.cur = k;
     if (!e.shiftKey || e.button === 2) this.anchor = k;
     if (e.button !== 0) {
@@ -594,6 +600,72 @@ class TextView {
       this.dragging = false;
       this.scroller.refresh();
     });
+  }
+
+  // Dragging a selection of several lines onto the other pane inserts a copy
+  // of them where it is dropped (Esc cancels); released without moving, it
+  // is a plain click on row k.
+  dragBlock(e, side, k) {
+    const to = side === 'left' ? 'right' : 'left', target = this.panes[to];
+    const x0 = e.clientX, y0 = e.clientY;
+    let moved = false, cancelled = false, gap = -1;
+    const onKey = (ev) => {
+      if (ev.key !== 'Escape') return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      cancelled = true;
+      stop();
+    };
+    this.dragging = true;
+    const stop = dragRows(this.panes[side], this.scroller, (p) => {
+      if (!moved && Math.abs(p.x - x0) + Math.abs(p.y - y0) < 5) return;
+      if (!moved) this.scroller.refresh();
+      moved = true;
+      const r = target.getBoundingClientRect();
+      gap = p.x >= r.left && p.x < r.right ? p.gap : -1;
+      this.showDropMark(to, gap);
+    }, () => {
+      document.removeEventListener('keydown', onKey, true);
+      this.dragging = false;
+      this.showDropMark(to, -1);
+      if (!moved) this.cur = this.anchor = k;
+      if (moved && !cancelled && gap >= 0) this.dropLines(to, gap);
+      else this.scroller.refresh();
+    });
+    document.addEventListener('keydown', onKey, true);
+  }
+
+  // Line between rows gap - 1 and gap of pane `to` where a dragged block
+  // would go; gap < 0 hides it.
+  showDropMark(to, gap) {
+    const m = this.dropMark, on = gap >= 0;
+    this.body.classList.toggle('block-drag', this.dragging);
+    this.body.classList.toggle('no-drop', this.dragging && !on);
+    m.style.display = on ? '' : 'none';
+    if (!on) return;
+    const pane = this.panes[to], n = this.selection().n;
+    m.firstChild.textContent = `Insert ${n} lines here`;
+    m.style.left = pane.offsetLeft + 'px';
+    m.style.width = pane.clientWidth + 'px';
+    m.style.top = pane.offsetTop + gap * TV_ROW - this.scroller.bar.scrollTop - 1 + 'px';
+  }
+
+  // Inserts a copy of the selected lines of the other side into side `to`
+  // before visible row `gap` (at the end when gap is past the last row).
+  dropLines(to, gap) {
+    const from = to === 'left' ? 'right' : 'left';
+    const fk = from === 'left' ? 'l' : 'r', tk = to === 'left' ? 'l' : 'r';
+    const src = this.targetRows(true).filter((i) => this.rows[i][fk] >= 0).map((i) => this.sides[from].lines[this.rows[i][fk]]);
+    if (!src.length) {
+      this.scroller.refresh();
+      return;
+    }
+    const pos = gap < this.vis.length ? this.insertionPoint(this.vis[gap], tk, to) : this.sides[to].lines.length;
+    this.pushUndo();
+    this.replaceLines(to, pos, 0, src);
+    this.side = to;
+    this.message = `Inserted ${src.length} line(s) at ${to} line ${pos + 1}`;
+    this.recompare(pos);
   }
 
   moveTo(k, extend, center) {

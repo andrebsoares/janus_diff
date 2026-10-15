@@ -83,7 +83,8 @@ git difftool --dir-diff      # todas as mudanças numa comparação de pastas
   / Shift+setas, PgUp/PgDn, Home/End; depois clique numa seta → / ← dentro da
   seleção, no botão "→ Copy N lines" que aparece ao lado dela ou use
   Ctrl+Shift+R / L: o bloco inteiro vai para o outro lado num passo só de
-  desfazer. Também é possível editar, desfazer/refazer, salvar preservando
+  desfazer. Arrastar a seleção e soltá-la no outro painel insere uma cópia
+  das linhas no ponto em que foi solta (Esc cancela). Também é possível editar, desfazer/refazer, salvar preservando
   codificação e fim de linha, miniatura, localizar, ir para linha, copiar
   (Ctrl+Shift+C) ou salvar as diferenças como diff unificado (patch),
   comparar o texto da área de transferência (Ctrl+Shift+V) e recarregar

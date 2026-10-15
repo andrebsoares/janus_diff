@@ -185,6 +185,10 @@ button { font: inherit; color: inherit; }
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 .tv-selbtn:hover { background: #084c90; }
+.tv-dropmark { position: absolute; z-index: 6; height: 2px; background: var(--accent); pointer-events: none; }
+.tv-dropmark span { position: absolute; right: 8px; top: -8px; padding: 0 6px; border-radius: 3px; background: var(--accent); color: #fff; font: 11px/16px var(--ui); white-space: nowrap; }
+.tv-body.block-drag, .tv-body.block-drag * { cursor: copy !important; }
+.tv-body.block-drag.no-drop, .tv-body.block-drag.no-drop * { cursor: no-drop !important; }
 .row.manual .num { box-shadow: inset 3px 0 #d98200; }
 .row.align-src .tx { outline: 2px solid #d98200; outline-offset: -2px; }
 .tv-body.aligning .tv-pane { cursor: crosshair; }
