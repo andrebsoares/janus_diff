@@ -68,7 +68,8 @@ git difftool --dir-diff      # todas as mudanças numa comparação de pastas
 - **Pastas:** árvores alinhadas, cores por resultado (igual, diferente, mais
   novo/antigo, órfão), critérios (tamanho, data com tolerância, conteúdo por
   CRC / binário / regras), filtros de nome e de caminho (`-/src/gen/`),
-  filtros de exibição, comparar o conteúdo só da seleção (Ctrl+M), tirar
+  filtros de exibição, seleção arrastando o mouse (ou com Shift/Ctrl+clique
+  e Shift+setas), comparar o conteúdo só da seleção (Ctrl+M), tirar
   itens da comparação (Ctrl+E), copiar, excluir (lixeira, com opção de
   exclusão permanente quando ela não está disponível), renomear, nova pasta,
   sincronizar (Update / Mirror).

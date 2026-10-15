@@ -13,7 +13,7 @@ const SHORTCUT_HELP = [
     ['Click → / ←', 'Copy that line, or the whole selection (Shift+click: its section)'],
     ['Drag, Shift+click', 'Select lines; then → / ←, Ctrl+Shift+R / L or the floating button copies them'],
     ['Shift+Up/Down/PgUp/PgDn/Home/End', 'Extend the selection'], ['Right-click', 'Copy line / section menu'], ['F2', 'Edit line'], ['F7', 'Align line with a line on the other side'], ['Ctrl+Enter', 'Insert line after'], ['Del', 'Delete line(s)'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], ['Ctrl+S, F12', 'Save, Save As'], ['Ctrl+F, F3', 'Find, find next'], ['Ctrl+G', 'Go to line'], ['Ctrl+D', 'Select section'], ['Alt+Left / Right', 'Focus left / right pane'], ['Ctrl+Shift+C', 'Copy as unified diff (patch)'], ['Ctrl+Shift+V', 'Compare the clipboard text on this side']]],
-  ['Folder Compare', [['Enter', 'Open folder / compare files'], ['Ctrl+M', 'Compare contents of selection'], ['Ctrl+E', 'Exclude selection'], ['Del, Shift+Del', 'Delete, permanent delete'], ['F2', 'Rename'], ['Ctrl+A', 'Select all'], ['Ctrl+F', 'Find filename'], ['Left / Right', 'Collapse / expand'], ['Backspace', 'Up one level'], ['Ctrl+Alt+L', 'Legend']]],
+  ['Folder Compare', [['Enter', 'Open folder / compare files'], ['Ctrl+M', 'Compare contents of selection'], ['Ctrl+E', 'Exclude selection'], ['Del, Shift+Del', 'Delete, permanent delete'], ['F2', 'Rename'], ['Ctrl+A', 'Select all'], ['Drag, Shift+click, Ctrl+click', 'Select a range / add or remove an item'], ['Shift+Up/Down/PgUp/PgDn/Home/End', 'Extend the selection'], ['Ctrl+F', 'Find filename'], ['Left / Right', 'Collapse / expand'], ['Backspace', 'Up one level'], ['Ctrl+Alt+L', 'Legend']]],
 ];
 
 // Small marker identifying a session type in tabs and on the home view.

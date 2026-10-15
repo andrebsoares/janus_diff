@@ -9,7 +9,7 @@ const DV_KEYS = {
   'Ctrl+A': 'SelectAll', F5: 'Refresh', 'Ctrl+F5': 'Refresh', 'Ctrl+N': 'DiffNext', 'Ctrl+P': 'DiffPrev',
   'Ctrl+F': 'Find', F3: 'FindNext', 'Shift+F3': 'FindPrev', 'Ctrl+Alt+L': 'Legend', Enter: 'Open', 'Ctrl+M': 'CompareContents', 'Ctrl+E': 'Exclude',
   Up: 'Up', Down: 'Down', 'Shift+Up': 'SelUp', 'Shift+Down': 'SelDown', PageUp: 'PageUp', PageDown: 'PageDown',
-  Home: 'Top', End: 'Bottom', Left: 'Collapse', Right: 'Expand', BkSp: 'UpOneLevel', 'Alt+Left': 'GoLeft', 'Alt+Right': 'GoRight',
+  'Shift+PageUp': 'SelPageUp', 'Shift+PageDown': 'SelPageDown', Home: 'Top', End: 'Bottom', 'Shift+Home': 'SelTop', 'Shift+End': 'SelBottom', Left: 'Collapse', Right: 'Expand', BkSp: 'UpOneLevel', 'Alt+Left': 'GoLeft', 'Alt+Right': 'GoRight',
 };
 
 const DV_CRITERIA_FIELDS = [
@@ -83,11 +83,11 @@ class DirView {
     const cols = () => [h('span', {}, 'Name'), h('span', { class: 'r' }, 'Size'), h('span', {}, 'Modified')];
     this.head = h('div', { class: 'dv-head dv-grid' }, cols(), h('span'), cols());
     this.rowsEl = h('div', { class: 'dv-rows' });
-    const viewport = h('div', { class: 'dv-viewport' }, this.rowsEl);
-    viewport.addEventListener('mousedown', (e) => this.onMouse(e));
+    this.viewport = h('div', { class: 'dv-viewport' }, this.rowsEl);
+    this.viewport.addEventListener('mousedown', (e) => this.onMouse(e));
     const bar = h('div', { class: 'vscroll' });
-    this.body = h('div', { class: 'dv-body' }, viewport, bar);
-    this.scroller = new VScroller(viewport, bar, DV_ROW, (first, n, off) => this.render(first, n, off));
+    this.body = h('div', { class: 'dv-body' }, this.viewport, bar);
+    this.scroller = new VScroller(this.viewport, bar, DV_ROW, (first, n, off) => this.render(first, n, off));
     this.status = h('div', { class: 'statusbar' });
     this.el = h('div', { class: 'view dirview' }, tb.bar,
       h('div', { class: 'pathbar dv-paths' }, this.pathBox.left.box, this.pathBox.right.box),
@@ -287,9 +287,21 @@ class DirView {
       this.selected = new Set([node.rel]);
     }
     this.scroller.refresh();
+    if (e.button !== 0) return;
     // Redrawing on mousedown replaces the clicked element, so the browser
     // never fires dblclick; the click count on mousedown is reliable.
-    if (e.detail === 2 && e.button === 0) this.open();
+    if (e.detail === 2) {
+      this.open();
+      return;
+    }
+    // Dragging with the button held selects the rows from the anchor on.
+    if (e.ctrlKey) return;
+    dragRows(this.viewport, this.scroller, ({ row }) => {
+      if (row === this.cur) return;
+      this.cur = row;
+      this.selectRange();
+      this.scroller.refresh();
+    });
   }
 
   selectRange() {
@@ -588,8 +600,12 @@ class DirView {
       case 'SelDown': this.moveTo(this.cur + 1, true); break;
       case 'PageUp': this.moveTo(this.cur - this.scroller.pageRows); break;
       case 'PageDown': this.moveTo(this.cur + this.scroller.pageRows); break;
+      case 'SelPageUp': this.moveTo(this.cur - this.scroller.pageRows, true); break;
+      case 'SelPageDown': this.moveTo(this.cur + this.scroller.pageRows, true); break;
       case 'Top': this.moveTo(0); break;
       case 'Bottom': this.moveTo(this.flat.length - 1); break;
+      case 'SelTop': this.moveTo(0, true); break;
+      case 'SelBottom': this.moveTo(this.flat.length - 1, true); break;
       case 'Expand': if (cur && cur.node.isDir) this.toggle(cur.node, true); break;
       case 'Collapse': if (cur && cur.node.isDir) this.toggle(cur.node, false); break;
       default: return false;
