@@ -234,18 +234,19 @@ async function probeBinary(p) {
   }
 }
 
-// Runs one file operation per item and reports the failures instead of
-// stopping at the first one.
+// Runs one file operation per item and reports the failures, with the items
+// that failed, instead of stopping at the first one.
 async function runOps(items, fn) {
-  const errors = [];
+  const errors = [], failed = [];
   for (const it of items) {
     try {
       await fn(it);
     } catch (err) {
       errors.push(`${it.path || it.from}: ${err.message}`);
+      failed.push(it);
     }
   }
-  return { done: items.length - errors.length, errors };
+  return { done: items.length - errors.length, errors, failed };
 }
 
 function registerIpc() {

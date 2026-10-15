@@ -355,7 +355,20 @@ class DirView {
     if (!items.length) return;
     const text = `Delete ${items.length} item(s) from the ${this.side} side?\n` + (permanent ? 'They will be permanently deleted.' : 'They will be moved to the recycle bin.');
     if (!(await Modal.confirm('Delete', text, 'Delete'))) return;
-    await this.report('Delete', await api.remove(items, !!permanent));
+    await this.report('Delete', await this.deleteItems(items, !!permanent));
+  }
+
+  // Deletes items; those the recycle bin refuses (no trash on the volume or
+  // the desktop) can be deleted permanently after an explicit confirmation.
+  async deleteItems(items, permanent) {
+    const res = await api.remove(items, permanent);
+    if (permanent || !res.failed.length) return res;
+    const text = `${res.failed.length} item(s) could not be moved to the recycle bin:\n\n${res.errors.slice(0, 12).join('\n')}`
+      + `${res.errors.length > 12 ? '\n…' : ''}\n\nDelete them permanently instead? This cannot be undone.`;
+    const ok = await Modal.show('Recycle Bin Unavailable', h('div', { class: 'dlg-text' }, text), [['Delete Permanently', true], ['Cancel', null, true]]);
+    if (!ok) return res;
+    const again = await api.remove(res.failed, true);
+    return { done: res.done + again.done, errors: again.errors, failed: again.failed };
   }
 
   async rename() {
@@ -407,7 +420,7 @@ class DirView {
     const text = `${label}:\n\n${copies.length} item(s) will be copied` + (deletes.length ? `\n${deletes.length} item(s) will be deleted (recycle bin)` : '') + '\n\nContinue?';
     if (!(await Modal.confirm('Synchronize', text, 'Start'))) return;
     const res = await api.copy(copies);
-    const del = deletes.length ? await api.remove(deletes, false) : { done: 0, errors: [] };
+    const del = deletes.length ? await this.deleteItems(deletes, false) : { done: 0, errors: [] };
     await this.report('Synchronize', { done: res.done + del.done, errors: res.errors.concat(del.errors) });
   }
 
