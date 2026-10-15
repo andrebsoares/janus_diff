@@ -5,6 +5,8 @@ const APP_KEYS = {
   'Ctrl+T': 'TabNew', 'Ctrl+W': 'CloseTab', 'Ctrl+F4': 'CloseTab', 'Ctrl+Tab': 'TabNext', 'Ctrl+Shift+Tab': 'TabPrev', F1: 'Shortcuts',
 };
 
+const DISK_CHECK_MS = 1500;
+
 const SHORTCUT_HELP = [
   ['All views', [['Ctrl+T', 'New tab'], ['Ctrl+W', 'Close tab'], ['Ctrl+Tab', 'Next tab'], ['F5', 'Refresh / reload'], ['Ctrl+N / Ctrl+P', 'Next / previous difference'], ['Ctrl+R / Ctrl+L', 'Copy to right / left']]],
   ['Text Compare', [['Ctrl+R / Ctrl+L', 'Copy section (or selection) to right / left'], ['Ctrl+Shift+R / L', 'Copy only the line(s) to right / left, then go to the next difference'],
@@ -64,6 +66,10 @@ const App = {
     api.onCommand((c) => { if (!Modal.open) this.command(c); });
     api.onOpen((paths) => this.openPaths(paths));
     api.onDirProgress((p) => { if (this.active && this.active.onProgress) this.active.onProgress(p); });
+    // Files changed by other programs are picked up on focus and while visible.
+    const checkDisk = () => { if (!Modal.open && !document.hidden && this.active && this.active.checkDisk) this.active.checkDisk(); };
+    window.addEventListener('focus', checkDisk);
+    setInterval(checkDisk, DISK_CHECK_MS);
     window.addEventListener('beforeunload', (e) => {
       if (this.quitting) return;
       const dirty = this.tabs.some((t) => t.sides && (t.sides.left.dirty || t.sides.right.dirty));

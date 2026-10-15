@@ -31,7 +31,7 @@ const TV_RULE_FIELDS = [
 ];
 
 function tvNewSide() {
-  return { path: '', lines: [], eol: '\n', finalNewline: true, encoding: 'utf8', dirty: false, binary: false, maxLen: 0, clipboard: false };
+  return { path: '', lines: [], eol: '\n', finalNewline: true, encoding: 'utf8', dirty: false, binary: false, maxLen: 0, clipboard: false, mtime: null, size: -1, seen: '' };
 }
 
 class TextView {
@@ -125,6 +125,7 @@ class TextView {
   onShow() {
     this.charW = this.probe.getBoundingClientRect().width / 10 || 7.8;
     this.scroller.refresh();
+    this.checkDisk();
   }
 
   session() {
@@ -150,7 +151,7 @@ class TextView {
         if (!st.exists) throw new Error('File not found');
         if (st.isDir) throw new Error('Is a folder');
         const data = await api.readText(p);
-        Object.assign(s, TextDiff.splitLines(data.text), { encoding: data.encoding, binary: data.binary });
+        Object.assign(s, TextDiff.splitLines(data.text), { encoding: data.encoding, binary: data.binary, mtime: data.mtime, size: data.size });
         if (data.binary) this.message = `${api.path.basename(p)} contains binary data.`;
       } catch (err) {
         this.message = `${p}: ${err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`;
@@ -204,17 +205,76 @@ class TextView {
       p = await api.saveFileDialog(s.path);
       if (!p) return false;
     }
+    this.saving = true;
     try {
-      await api.writeText(p, TextDiff.joinLines(s.lines, s.eol, s.finalNewline), s.encoding);
+      const st = await api.writeText(p, TextDiff.joinLines(s.lines, s.eol, s.finalNewline), s.encoding);
+      s.mtime = st.mtime;
+      s.size = st.size;
     } catch (err) {
       await Modal.message('Save', `Could not save ${p}: ${err.message}`);
       return false;
+    } finally {
+      this.saving = false;
     }
     s.path = p;
     s.dirty = false;
     s.clipboard = false;
     this.showPath(side);
     return true;
+  }
+
+  // Run by the app every few seconds and when the window gets the focus: a
+  // file changed by another program (editor, git checkout) is reloaded if
+  // its side has no unsaved edits; otherwise the status bar says so, once
+  // per change.
+  async checkDisk() {
+    if (this.checking || this.saving || this.body.querySelector('.tv-edit')) return;
+    this.checking = true;
+    try {
+      for (const side of ['left', 'right']) {
+        const s = this.sides[side], p = s.path;
+        if (!p || s.mtime === null) continue;
+        const st = await api.stat(p);
+        if (s.path !== p || this.saving) continue;
+        const stamp = st.exists ? `${st.mtime}:${st.size}` : 'missing';
+        // A change already reported is reloaded once the side has no edits.
+        if (stamp === `${s.mtime}:${s.size}` || (stamp === s.seen && (s.dirty || !st.exists))) continue;
+        s.seen = stamp;
+        const name = api.path.basename(p);
+        if (st.exists && !s.dirty) {
+          await this.reloadSide(side);
+          continue;
+        }
+        this.message = st.exists ? `${name} changed on disk; not reloaded because it has unsaved edits here (F5 reloads)` : `${name} was deleted or moved`;
+        this.scroller.refresh();
+      }
+    } finally {
+      this.checking = false;
+    }
+  }
+
+  // Replaces one side with the file's current text as an undoable step, so
+  // Ctrl+Z brings back the previous text (as an unsaved edit).
+  async reloadSide(side) {
+    const s = this.sides[side], p = s.path;
+    let data;
+    try {
+      data = await api.readText(p);
+    } catch {
+      return;
+    }
+    if (s.path !== p || s.dirty || data.binary) return;
+    const text = TextDiff.splitLines(data.text);
+    const unchanged = text.eol === s.eol && text.finalNewline === s.finalNewline
+      && text.lines.length === s.lines.length && text.lines.every((line, i) => line === s.lines[i]);
+    if (!unchanged) {
+      this.pushUndo();
+      this.undo[this.undo.length - 1][side === 'left' ? 'dl' : 'dr'] = true;
+      this.aligns = [];
+      this.message = `${api.path.basename(p)} changed on disk and was reloaded (Ctrl+Z restores the previous text)`;
+    }
+    Object.assign(s, text, { encoding: data.encoding, mtime: data.mtime, size: data.size });
+    if (!unchanged) this.recompare();
   }
 
   async save() {
