@@ -67,14 +67,18 @@ git difftool --dir-diff      # todas as mudanças numa comparação de pastas
 
 - **Pastas:** árvores alinhadas, cores por resultado (igual, diferente, mais
   novo/antigo, órfão), critérios (tamanho, data com tolerância, conteúdo por
-  CRC / binário / regras), filtros de nome, filtros de exibição, copiar,
-  excluir (lixeira), renomear, nova pasta, sincronizar (Update / Mirror).
+  CRC / binário / regras), filtros de nome e de caminho (`-/src/gen/`),
+  filtros de exibição, comparar o conteúdo só da seleção (Ctrl+M), tirar
+  itens da comparação (Ctrl+E), copiar, excluir (lixeira, com opção de
+  exclusão permanente quando ela não está disponível), renomear, nova pasta,
+  sincronizar (Update / Mirror).
 - **Texto:** alinhamento de linhas, diferenças dentro da linha, regras de
   importância (espaços, maiúsculas), navegação por seção, realinhamento
   manual (F7 numa linha, depois clique na linha correspondente do outro
   lado), copiar seção ou
   linha entre os lados, editar, desfazer/refazer, salvar preservando
-  codificação e fim de linha, miniatura, localizar, ir para linha.
+  codificação e fim de linha, miniatura, localizar, ir para linha, copiar
+  (Ctrl+Shift+C) ou salvar as diferenças como diff unificado (patch).
 - **Hex:** comparação byte a byte.
 - Abas, sessões recentes, arrastar e soltar, lista de atalhos (F1).
 

@@ -12,7 +12,7 @@ const TV_KEYS = {
   'Ctrl+N': 'DiffNext', 'Ctrl+P': 'DiffPrev', 'Ctrl+F': 'Find', F3: 'FindNext', 'Shift+F3': 'FindPrev',
   'Ctrl+G': 'GoTo', Del: 'Delete', 'Alt+Left': 'GoLeft', 'Alt+Right': 'GoRight', F6: 'GoNext', 'Shift+F6': 'GoNext',
   Up: 'Up', Down: 'Down', PageUp: 'PageUp', PageDown: 'PageDown', 'Ctrl+Home': 'Top', 'Ctrl+End': 'Bottom',
-  'Shift+Up': 'SelUp', 'Shift+Down': 'SelDown', 'Ctrl+C': 'CopyText', F7: 'AlignWith', Esc: 'AlignCancel',
+  'Shift+Up': 'SelUp', 'Shift+Down': 'SelDown', 'Ctrl+C': 'CopyText', 'Ctrl+Shift+C': 'CopyPatch', F7: 'AlignWith', Esc: 'AlignCancel',
 };
 
 const TV_TYPE_CAPTION = {
@@ -75,7 +75,8 @@ class TextView {
       ['⇨ Copy', 'CopyRight', 'Copy section or selection to right (Ctrl+R)'], ['⇦ Copy', 'CopyLeft', 'Copy section or selection to left (Ctrl+L)'], '|',
       ['↓ Next', 'DiffNext', 'Next difference section (Ctrl+N)'], ['↑ Prev', 'DiffPrev', 'Previous difference section (Ctrl+P)'],
       ['⇅ Align', 'AlignWith', 'Align this line with a line on the other side (F7)'], '|',
-      ['↶ Undo', 'Undo', 'Undo (Ctrl+Z)'], ['↷ Redo', 'Redo', 'Redo (Ctrl+Y)'], ['✎ Edit', 'FullEdit', 'Edit line (F2)'], ['Save', 'Save', 'Save (Ctrl+S)'], '|',
+      ['↶ Undo', 'Undo', 'Undo (Ctrl+Z)'], ['↷ Redo', 'Redo', 'Redo (Ctrl+Y)'], ['✎ Edit', 'FullEdit', 'Edit line (F2)'], ['Save', 'Save', 'Save (Ctrl+S)'],
+      ['Patch', 'CopyPatch', 'Copy the differences as a unified diff (Ctrl+Shift+C)'], '|',
       ['⇄ Swap', 'Swap', 'Swap sides'], ['⟳ Reload', 'Refresh', 'Reload files (F5)'], ['¶', 'ShowWS', 'Visible whitespace'], ['#', 'ShowItemNum', 'Line numbers'],
     ], (c) => this.command(c));
     this.buttons = tb.buttons;
@@ -639,6 +640,45 @@ class TextView {
     await this.load('right', paths[1]);
   }
 
+  // Unified diff from the left text to the right one as currently shown,
+  // unsaved edits and manual alignments included; '' when they are identical.
+  patch() {
+    const L = this.sides.left, R = this.sides.right;
+    return TextDiff.unifiedDiff(this.rows, L.lines, R.lines, {
+      leftName: L.path || 'left', rightName: R.path || 'right', leftFinalNewline: L.finalNewline, rightFinalNewline: R.finalNewline,
+    });
+  }
+
+  async copyPatch() {
+    const text = this.patch();
+    try {
+      if (text) await navigator.clipboard.writeText(text);
+      this.message = text ? `Unified diff copied to the clipboard (${text.split('\n').length - 1} lines)` : 'No differences: nothing to copy';
+    } catch (err) {
+      this.message = `Could not copy to the clipboard: ${err.message}`;
+    }
+    this.scroller.refresh();
+  }
+
+  async savePatch() {
+    const text = this.patch();
+    if (!text) {
+      this.message = 'No differences: nothing to save';
+      this.scroller.refresh();
+      return;
+    }
+    const base = this.sides.left.path || this.sides.right.path;
+    const p = await api.saveFileDialog(base ? base + '.patch' : 'changes.patch');
+    if (!p) return;
+    try {
+      await api.writeText(p, text, 'utf8');
+      this.message = `Patch saved to ${p}`;
+    } catch (err) {
+      await Modal.message('Save Patch', `Could not save ${p}: ${err.message}`);
+    }
+    this.scroller.refresh();
+  }
+
   copyText() {
     const key = this.side === 'left' ? 'l' : 'r';
     const lines = this.targetRows(true).map((i) => this.rows[i][key]).filter((x) => x >= 0).map((x) => this.sides[this.side].lines[x]);
@@ -695,6 +735,8 @@ class TextView {
       case 'Top': this.moveTo(0); break;
       case 'Bottom': this.moveTo(this.vis.length - 1); break;
       case 'CopyText': this.copyText(); break;
+      case 'CopyPatch': this.copyPatch(); break;
+      case 'SavePatch': this.savePatch(); break;
       case 'AlignWith': this.alignPick(); break;
       case 'AlignCancel':
         if (!this.alignFrom) return false;

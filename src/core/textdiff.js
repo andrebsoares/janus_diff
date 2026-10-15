@@ -318,5 +318,65 @@
     return { left: runsOf(delA, left, rules, right), right: runsOf(insB, right, rules, left) };
   }
 
-  return { DEFAULT_RULES, splitLines, joinLines, sigKey, myers, compareLines, inlineDiff, isImportant, buildSections };
+  // Unified diff ("patch") of two texts following the alignment in rows, as
+  // produced by compareLines. Lines are compared exactly, whatever the rules
+  // said; each run of changed rows prints its removals before its additions.
+  // opts: { leftName, rightName, context = 3, leftFinalNewline = true,
+  // rightFinalNewline = true }. Returns '' when the texts are identical.
+  function unifiedDiff(rows, leftLines, rightLines, opts) {
+    opts = opts || {};
+    const context = opts.context === undefined ? 3 : opts.context;
+    const lastL = opts.leftFinalNewline === false ? leftLines.length - 1 : -1;
+    const lastR = opts.rightFinalNewline === false ? rightLines.length - 1 : -1;
+    const ops = [];
+    let dels = [], adds = [];
+    const flush = () => { ops.push(...dels, ...adds); dels = []; adds = []; };
+    for (const row of rows) {
+      // A last line without a newline differs from one that has it.
+      if (row.l >= 0 && row.r >= 0 && leftLines[row.l] === rightLines[row.r] && (row.l === lastL) === (row.r === lastR)) {
+        flush();
+        ops.push({ t: ' ', l: row.l, r: row.r });
+        continue;
+      }
+      if (row.l >= 0) dels.push({ t: '-', l: row.l });
+      if (row.r >= 0) adds.push({ t: '+', r: row.r });
+    }
+    flush();
+    const changed = [];
+    ops.forEach((op, i) => { if (op.t !== ' ') changed.push(i); });
+    if (!changed.length) return '';
+
+    // Lines of each side before op i, for the hunk headers.
+    const beforeL = [], beforeR = [];
+    let nl = 0, nr = 0;
+    for (const op of ops) {
+      beforeL.push(nl); beforeR.push(nr);
+      if (op.t !== '+') nl++;
+      if (op.t !== '-') nr++;
+    }
+    const out = [`--- ${opts.leftName || 'left'}`, `+++ ${opts.rightName || 'right'}`];
+    const range = (start, count) => (count === 1 ? `${start}` : `${count ? start : start - 1},${count}`);
+    for (let c = 0; c < changed.length;) {
+      const lo = Math.max(0, changed[c] - context);
+      let end = changed[c];
+      // Changes at most twice the context apart share one hunk.
+      while (c + 1 < changed.length && changed[c + 1] - end - 1 <= 2 * context) end = changed[++c];
+      c++;
+      const hi = Math.min(ops.length - 1, end + context);
+      const body = [];
+      let cl = 0, cr = 0;
+      for (let i = lo; i <= hi; i++) {
+        const op = ops[i];
+        const text = op.t === '+' ? rightLines[op.r] : leftLines[op.l];
+        body.push(op.t + text);
+        if (op.t !== '+') cl++;
+        if (op.t !== '-') cr++;
+        if ((op.t !== '+' && op.l === lastL) || (op.t === '+' && op.r === lastR)) body.push('\\ No newline at end of file');
+      }
+      out.push(`@@ -${range(beforeL[lo] + 1, cl)} +${range(beforeR[lo] + 1, cr)} @@`, ...body);
+    }
+    return out.join('\n') + '\n';
+  }
+
+  return { DEFAULT_RULES, splitLines, joinLines, sigKey, myers, compareLines, inlineDiff, isImportant, buildSections, unifiedDiff };
 });

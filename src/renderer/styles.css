@@ -287,6 +287,7 @@ button { font: inherit; color: inherit; }
 
 .legend { display: grid; gap: 5px; padding: 8px 10px; background: var(--paper); border: 1px solid #c4c4c4; }
 .legend-row { display: flex; align-items: center; gap: 8px; }
+.dlg:has(.shortcuts) { max-width: 94vw; }
 .shortcuts { display: grid; grid-template-columns: repeat(3, auto); gap: 4px 22px; }
 .sc-row { display: grid; grid-template-columns: 120px auto; gap: 8px; padding: 2px 0; }
 kbd { font: 11px var(--ui); color: #204a7a; }

@@ -7,8 +7,8 @@ const APP_KEYS = {
 
 const SHORTCUT_HELP = [
   ['All views', [['Ctrl+T', 'New tab'], ['Ctrl+W', 'Close tab'], ['Ctrl+Tab', 'Next tab'], ['F5', 'Refresh / reload'], ['Ctrl+N / Ctrl+P', 'Next / previous difference'], ['Ctrl+R / Ctrl+L', 'Copy to right / left']]],
-  ['Text Compare', [['Ctrl+Shift+R / L', 'Copy line to right / left'], ['F2', 'Edit line'], ['F7', 'Align line with a line on the other side'], ['Ctrl+Enter', 'Insert line after'], ['Del', 'Delete line(s)'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], ['Ctrl+S, F12', 'Save, Save As'], ['Ctrl+F, F3', 'Find, find next'], ['Ctrl+G', 'Go to line'], ['Ctrl+D', 'Select section'], ['Alt+Left / Right', 'Focus left / right pane']]],
-  ['Folder Compare', [['Enter', 'Open folder / compare files'], ['Del, Shift+Del', 'Delete, permanent delete'], ['F2', 'Rename'], ['Ctrl+A', 'Select all'], ['Ctrl+F', 'Find filename'], ['Left / Right', 'Collapse / expand'], ['Backspace', 'Up one level'], ['Ctrl+Alt+L', 'Legend']]],
+  ['Text Compare', [['Ctrl+Shift+R / L', 'Copy line to right / left'], ['F2', 'Edit line'], ['F7', 'Align line with a line on the other side'], ['Ctrl+Enter', 'Insert line after'], ['Del', 'Delete line(s)'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], ['Ctrl+S, F12', 'Save, Save As'], ['Ctrl+F, F3', 'Find, find next'], ['Ctrl+G', 'Go to line'], ['Ctrl+D', 'Select section'], ['Alt+Left / Right', 'Focus left / right pane'], ['Ctrl+Shift+C', 'Copy as unified diff (patch)']]],
+  ['Folder Compare', [['Enter', 'Open folder / compare files'], ['Ctrl+M', 'Compare contents of selection'], ['Ctrl+E', 'Exclude selection'], ['Del, Shift+Del', 'Delete, permanent delete'], ['F2', 'Rename'], ['Ctrl+A', 'Select all'], ['Ctrl+F', 'Find filename'], ['Left / Right', 'Collapse / expand'], ['Backspace', 'Up one level'], ['Ctrl+Alt+L', 'Legend']]],
 ];
 
 // Small marker identifying a session type in tabs and on the home view.

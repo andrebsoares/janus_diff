@@ -7,7 +7,7 @@ const DV_ROW = 20;
 const DV_KEYS = {
   'Ctrl+R': 'CopyRight', 'Ctrl+L': 'CopyLeft', Del: 'Delete', 'Shift+Del': 'PermanentDelete', F2: 'Rename',
   'Ctrl+A': 'SelectAll', F5: 'Refresh', 'Ctrl+F5': 'Refresh', 'Ctrl+N': 'DiffNext', 'Ctrl+P': 'DiffPrev',
-  'Ctrl+F': 'Find', F3: 'FindNext', 'Shift+F3': 'FindPrev', 'Ctrl+Alt+L': 'Legend', Enter: 'Open',
+  'Ctrl+F': 'Find', F3: 'FindNext', 'Shift+F3': 'FindPrev', 'Ctrl+Alt+L': 'Legend', Enter: 'Open', 'Ctrl+M': 'CompareContents', 'Ctrl+E': 'Exclude',
   Up: 'Up', Down: 'Down', 'Shift+Up': 'SelUp', 'Shift+Down': 'SelDown', PageUp: 'PageUp', PageDown: 'PageDown',
   Home: 'Top', End: 'Bottom', Left: 'Collapse', Right: 'Expand', BkSp: 'UpOneLevel', 'Alt+Left': 'GoLeft', 'Alt+Right': 'GoRight',
 };
@@ -67,6 +67,7 @@ class DirView {
       ['✱ All', 'FavCompareAll', 'Show all'], ['≠ Diffs', 'FavDiff', 'Show differences'], ['= Same', 'FavSame', 'Show same'], ['◇ Orphans', 'FavOrphan', 'Show orphans'],
       ['Rules', 'Rules', 'Session settings: comparison criteria and filters'], '|',
       ['⇨ Copy', 'CopyRight', 'Copy to right (Ctrl+R)'], ['⇦ Copy', 'CopyLeft', 'Copy to left (Ctrl+L)'], ['✕ Delete', 'Delete', 'Delete (Del)'], '|',
+      ['≟ Contents', 'CompareContents', 'Compare the contents of the selected files (Ctrl+M)'], ['⊘ Exclude', 'Exclude', 'Exclude the selection from the comparison (Ctrl+E)'], '|',
       ['⊞ Expand', 'ExpandAll', 'Expand all folders'], ['⊟ Collapse', 'CollapseAll', 'Collapse all folders'], '|',
       ['↓ Next', 'DiffNext', 'Next difference (Ctrl+N)'], ['↑ Prev', 'DiffPrev', 'Previous difference (Ctrl+P)'], '|',
       ['⇄ Swap', 'Swap', 'Swap sides'], ['⟳ Refresh', 'Refresh', 'Refresh (F5)'], ['Sync ▾', 'SyncMenu', 'Synchronize'], ['Legend', 'Legend', 'Color legend'],
@@ -491,6 +492,46 @@ class DirView {
     this.renderStatus();
   }
 
+  // Settles quick-test results (e.g. only the timestamps differ) for the
+  // selection by comparing contents; lasts until the next refresh.
+  async compareContents() {
+    const nodes = this.selection().filter((n) => n.left && n.right);
+    if (!nodes.length) {
+      this.message = 'Compare Contents: select files or folders present on both sides';
+      this.renderStatus();
+      return;
+    }
+    const content = await Modal.show('Compare Contents', h('div', { class: 'dlg-text' },
+      `Compare the contents of the ${nodes.length} selected item(s)?\nThe result overrides the size and timestamp tests until the next refresh.`),
+    [['Rules-based', 'rules', true], ['Binary', 'binary'], ['CRC', 'crc'], ['Cancel', null]]);
+    if (!content) return;
+    const token = this.scanToken = (this.scanToken || 0) + 1;
+    this.message = 'Comparing contents…';
+    this.renderStatus();
+    try {
+      const res = await api.recheckContents(this.tree, this.roots.left, this.roots.right, nodes.map((n) => n.rel), Object.assign({}, this.criteria, { content }));
+      if (token !== this.scanToken) return;
+      const selected = new Set(this.selected);
+      this.setTree(res.children);
+      this.selected = selected;
+      this.message = `Compared ${res.compared} file(s): ${res.same} same, ${res.compared - res.same} different`;
+    } catch (err) {
+      if (token !== this.scanToken) return;
+      this.message = err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    }
+    this.scroller.refresh();
+  }
+
+  // Adds a mask per selected item ("-/rel/path", anchored at the top) to
+  // the session's name filters, where Rules can edit or remove it.
+  exclude() {
+    const nodes = this.selection();
+    if (!nodes.length) return;
+    const masks = nodes.map((n) => '-/' + n.rel.replace(/[*?;]/g, '?') + (n.isDir ? '/' : ''));
+    this.criteria = Object.assign({}, this.criteria, { filters: [this.criteria.filters || '*', ...masks].join(';') });
+    this.refresh();
+  }
+
   async editCriteria() {
     const v = await Modal.form('Session Settings — Comparison', DV_CRITERIA_FIELDS, this.criteria);
     if (!v) return;
@@ -520,6 +561,8 @@ class DirView {
       case 'PermanentDelete': this.remove(true); break;
       case 'Rename': this.rename(); break;
       case 'NewFolder': this.newFolder(); break;
+      case 'CompareContents': this.compareContents(); break;
+      case 'Exclude': this.exclude(); break;
       case 'ExpandAll': this.expandAll(true); break;
       case 'CollapseAll': this.expandAll(false); break;
       case 'DiffNext': this.gotoDiff(1); break;

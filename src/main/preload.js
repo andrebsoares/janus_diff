@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('api', {
   writeText: call('fs:writeText'),
   readBinary: call('fs:readBinary'),
   compareFolders: call('dir:compare'),
+  recheckContents: call('dir:recheck'),
   copy: call('ops:copy'),
   remove: call('ops:delete'),
   rename: call('ops:rename'),

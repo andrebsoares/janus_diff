@@ -26,8 +26,10 @@ function globToRegExp(glob) {
   return new RegExp('^' + body + '$', 'i');
 }
 
-// "*.js;*.ts;-*.min.js;-node_modules/" — a leading "-" excludes, a trailing
-// slash targets folders.
+// "*.js;*.ts;-*.min.js;-node_modules/;-src/gen/;-/README.md" — a leading "-"
+// excludes, a trailing slash targets folders, and a mask with a slash inside
+// or in front matches the path relative to the compared folders instead of
+// the name.
 function parseFilters(spec) {
   const f = { incFiles: [], excFiles: [], incDirs: [], excDirs: [] };
   for (let raw of String(spec || '*').split(';')) {
@@ -37,20 +39,27 @@ function parseFilters(spec) {
     if (exclude) raw = raw.slice(1);
     const isDir = /[\\/]$/.test(raw);
     if (isDir) raw = raw.slice(0, -1);
+    raw = raw.replace(/\\/g, '/');
+    const anchored = /^\.?\//.test(raw);
+    raw = raw.replace(/^\.?\//, '');
+    if (!raw) continue;
     if (raw === '*.*') raw = '*';
-    f[(exclude ? 'exc' : 'inc') + (isDir ? 'Dirs' : 'Files')].push(globToRegExp(raw));
+    f[(exclude ? 'exc' : 'inc') + (isDir ? 'Dirs' : 'Files')].push({ re: globToRegExp(raw), byPath: anchored || raw.includes('/') });
   }
   return f;
 }
 
-function passesFilter(f, name, isDir) {
+// rel is the item's path relative to the compared folders, "/"-separated;
+// it defaults to the name, i.e. an item at the top level.
+function passesFilter(f, name, isDir, rel) {
   const inc = isDir ? f.incDirs : f.incFiles;
   const exc = isDir ? f.excDirs : f.excFiles;
-  if (exc.some((re) => re.test(name))) return false;
-  return inc.length === 0 || inc.some((re) => re.test(name));
+  const hit = (m) => m.re.test(m.byPath ? rel || name : name);
+  if (exc.some(hit)) return false;
+  return inc.length === 0 || inc.some(hit);
 }
 
-async function listDir(dir, filters, caseSensitive) {
+async function listDir(dir, rel, filters, caseSensitive) {
   const out = new Map();
   if (!dir) return out;
   let entries;
@@ -67,7 +76,7 @@ async function listDir(dir, filters, caseSensitive) {
       return;
     }
     const isDir = st.isDirectory();
-    if (!passesFilter(filters, name, isDir)) return;
+    if (!passesFilter(filters, name, isDir, rel ? rel + '/' + name : name)) return;
     let key = caseSensitive ? name : name.toLowerCase();
     if (out.has(key)) key = name;
     out.set(key, { name, isDir, size: isDir ? 0 : st.size, mtime: st.mtimeMs });
@@ -212,8 +221,8 @@ async function compareFolders(leftRoot, rightRoot, criteria, onProgress) {
   // for a missing side they give where a copy would land.
   async function walk(leftDir, rightDir, rel, lrel, rrel) {
     const [lm, rm] = await Promise.all([
-      listDir(leftDir, filters, c.filenameCase),
-      listDir(rightDir, filters, c.filenameCase),
+      listDir(leftDir, rel, filters, c.filenameCase),
+      listDir(rightDir, rel, filters, c.filenameCase),
     ]);
     const keys = [...new Set([...lm.keys(), ...rm.keys()])];
     const nodes = [];
@@ -259,10 +268,21 @@ async function compareFolders(leftRoot, rightRoot, criteria, onProgress) {
   }
 
   const children = await walk(leftRoot, rightRoot, '', [], []);
+  await compareContents(pending, c, (compared) => {
+    if (onProgress && compared % 100 === 0) onProgress({ scanned, compared, toCompare: pending.length });
+  });
+  const root = { name: '', rel: '', isDir: true, left: {}, right: {}, children };
+  aggregate(root);
+  return { children, flags: root.flags, fileCount: scanned };
+}
+
+// Compares the contents of the jobs' files a few at a time and classifies
+// their nodes; onDone receives how many were started so far.
+async function compareContents(jobs, c, onDone) {
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(CONTENT_CONCURRENCY, pending.length) }, async () => {
-    while (next < pending.length) {
-      const job = pending[next++];
+  await Promise.all(Array.from({ length: Math.min(CONTENT_CONCURRENCY, jobs.length) }, async () => {
+    while (next < jobs.length) {
+      const job = jobs[next++];
       let same;
       try {
         same = await contentEqual(job.lp, job.rp, c);
@@ -270,12 +290,33 @@ async function compareFolders(leftRoot, rightRoot, criteria, onProgress) {
         same = false;
       }
       classify(job.node, c.contentOverridesQuick ? same : same && job.quick, c);
-      if (onProgress && next % 100 === 0) onProgress({ scanned, compared: next, toCompare: pending.length });
+      if (onDone) onDone(next);
     }
   }));
-  const root = { name: '', rel: '', isDir: true, left: {}, right: {}, children };
-  aggregate(root);
-  return { children, flags: root.flags, fileCount: scanned };
 }
 
-module.exports = { DEFAULT_CRITERIA, compareFolders, parseFilters, passesFilter, decodeText, encodeText, crc32, binaryEqual };
+// "Compare Contents" on part of an existing result: the files at rels (a
+// folder stands for everything in it) present on both sides are compared
+// with criteria.content (default rules-based), which overrides the quick
+// tests, and the folders are summarised again. Returns the updated tree.
+async function recheckContents(children, leftRoot, rightRoot, rels, criteria, onProgress) {
+  const c = Object.assign({}, DEFAULT_CRITERIA, criteria, { contentOverridesQuick: true });
+  if (c.content === 'none') c.content = 'rules';
+  c.rules = Object.assign({}, TextDiff.DEFAULT_RULES, c.rules);
+  const wanted = new Set(rels);
+  const jobs = [];
+  const visit = (nodes, inside) => nodes.forEach((n) => {
+    const hit = inside || wanted.has(n.rel);
+    if (n.isDir) visit(n.children, hit);
+    else if (hit && n.left && n.right) jobs.push({ node: n, lp: path.join(leftRoot, ...n.lrel), rp: path.join(rightRoot, ...n.rrel) });
+  });
+  visit(children, false);
+  await compareContents(jobs, c, (compared) => {
+    if (onProgress && compared % 100 === 0) onProgress({ compared, toCompare: jobs.length });
+  });
+  aggregate({ name: '', rel: '', isDir: true, left: {}, right: {}, children });
+  const same = jobs.filter((j) => j.node.status === 'same').length;
+  return { children, compared: jobs.length, same };
+}
+
+module.exports = { DEFAULT_CRITERIA, compareFolders, recheckContents, parseFilters, passesFilter, decodeText, encodeText, crc32, binaryEqual };

@@ -94,6 +94,7 @@ function buildMenu() {
         sep,
         item('Save', 'Save', 'Ctrl+S'),
         item('Save As...', 'SaveAs', 'F12'),
+        item('Save Patch...', 'SavePatch'),
       ],
     },
     {
@@ -105,6 +106,8 @@ function buildMenu() {
         item('Copy Line to Left', 'CopyItemLeft', 'Ctrl+Shift+L'),
         sep,
         item('Open / Compare Contents', 'Open', 'Enter'),
+        item('Compare Contents of Selection...', 'CompareContents', 'Ctrl+M'),
+        item('Exclude from Comparison', 'Exclude', 'Ctrl+E'),
         item('Delete', 'Delete', 'Delete'),
         item('Rename', 'Rename', 'F2'),
         item('New Folder...', 'NewFolder'),
@@ -128,6 +131,7 @@ function buildMenu() {
         item('Redo', 'Redo', 'Ctrl+Y'),
         sep,
         { role: 'cut' }, { role: 'copy' }, { role: 'paste' },
+        item('Copy as Unified Diff', 'CopyPatch', 'Ctrl+Shift+C'),
         sep,
         item('Edit Line', 'FullEdit', 'F2'),
         item('Insert Line After', 'InsertItemAfter', 'Ctrl+Enter'),
@@ -285,9 +289,11 @@ function registerIpc() {
     return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   });
 
-  handle('dir:compare', (left, right, criteria) => Dir.compareFolders(left, right, criteria, (p) => {
+  const progress = (p) => {
     if (win && !win.isDestroyed()) win.webContents.send('dir:progress', p);
-  }));
+  };
+  handle('dir:compare', (left, right, criteria) => Dir.compareFolders(left, right, criteria, progress));
+  handle('dir:recheck', (children, left, right, rels, criteria) => Dir.recheckContents(children, left, right, rels, criteria, progress));
 
   handle('ops:copy', (items) => runOps(items, async ({ from, to }) => {
     await fs.promises.mkdir(path.dirname(to), { recursive: true });
