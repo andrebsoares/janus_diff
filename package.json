@@ -20,8 +20,7 @@
     "publish": {
       "provider": "github",
       "owner": "andrebsoares",
-      "repo": "janus_diff",
-      "releaseType": "release"
+      "repo": "janus_diff"
     },
     "files": [
       "src/**/*",

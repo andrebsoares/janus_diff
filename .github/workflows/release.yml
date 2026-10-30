@@ -26,6 +26,11 @@ jobs:
           fi
       - run: npm ci
       - run: npm test
-      - run: npx electron-builder --win nsis portable --x64 --publish always
+      # Publishing from electron-builder makes each target create the release,
+      # and the loser of that race fails the build; so it only builds.
+      - run: npx electron-builder --win nsis portable --x64 --publish never
+      - name: Publish the release
+        shell: bash
+        run: gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.blockmap dist/latest.yml --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
