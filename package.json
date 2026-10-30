@@ -17,7 +17,12 @@
   },
   "build": {
     "appId": "local.janusdiff.app",
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "andrebsoares",
+      "repo": "janus_diff",
+      "releaseType": "release"
+    },
     "files": [
       "src/**/*",
       "docs/AJUDA.md",

@@ -24,6 +24,17 @@ npm run dist:win
 Gera instalador NSIS e executável portátil em `dist/`. Rode em uma máquina
 Windows (ou em Linux com Wine instalado).
 
+## Publicar uma versão
+
+```
+npm version patch            # ou minor / major: sobe a versão e cria a tag vX.Y.Z
+git push --follow-tags
+```
+
+A tag dispara `.github/workflows/release.yml`, que roda `npm test`, gera o
+instalador e o portátil e os publica no GitHub Releases. A tag precisa ser igual
+à versão do `package.json`, senão o workflow falha antes do build.
+
 ## Menu de contexto do Explorer (Windows)
 
 O instalador registra as opções; rodando do código-fonte, use
