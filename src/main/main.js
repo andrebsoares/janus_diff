@@ -10,6 +10,15 @@ const MAX_BINARY_BYTES = 64 * 1024 * 1024;
 const MAX_RECENT = 30;
 
 let win;
+// Comparisons requested before the page could receive them; it asks for them
+// through app:args once it is listening.
+let pageListening = false;
+let pendingOpens = [];
+
+function openInWindow(paths) {
+  if (pageListening) win.webContents.send('app:open', paths);
+  else pendingOpens.push(paths);
+}
 
 function sessionsFile() {
   return path.join(app.getPath('userData'), 'sessions.json');
@@ -294,7 +303,12 @@ async function runOps(items, fn) {
 function registerIpc() {
   const handle = (channel, fn) => ipcMain.handle(channel, (_e, ...args) => fn(...args));
 
-  handle('app:args', () => startPaths);
+  handle('app:args', () => {
+    pageListening = true;
+    const opens = [startPaths, ...pendingOpens].filter((paths) => paths.length);
+    pendingOpens = [];
+    return opens;
+  });
   handle('app:version', () => app.getVersion());
   handle('app:guide', readGuide);
 
@@ -453,7 +467,7 @@ if (runHeadless()) {
     if (!win) return;
     if (win.isMinimized()) win.restore();
     win.focus();
-    if (data && data.paths && data.paths.length) win.webContents.send('app:open', data.paths);
+    if (data && data.paths && data.paths.length) openInWindow(data.paths);
   });
   if (cli.mode === 'compare-selected') gather(cli.target); else startWindow();
 }

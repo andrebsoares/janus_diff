@@ -85,8 +85,9 @@ const App = {
       e.returnValue = false;
       this.closeAll();
     });
-    api.args().then((paths) => {
-      if (paths.length) this.openPaths(paths); else this.add(new HomeView(this));
+    api.args().then(async (opens) => {
+      if (!opens.length) this.add(new HomeView(this));
+      for (const paths of opens) await this.openPaths(paths);
     });
   },
 
@@ -104,7 +105,7 @@ const App = {
     const [left, right] = [paths[0] || '', paths[1] || ''];
     const st = left ? await api.stat(left) : { exists: false };
     if (st.exists && st.isDir) this.add(new DirView(this, left, right));
-    else this.openFiles(left, right);
+    else await this.openFiles(left, right);
   },
 
   // Opens a file pair in the text view, or the hex view when either is binary.
