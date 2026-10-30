@@ -48,9 +48,13 @@ desinstalador ou por **Tools → Remove Explorer Context Menu**.
 `~/.gitconfig` global:
 
 ```
+git jd                       # um arquivo por vez, o caminho mais rápido
 git difftool                 # um arquivo por vez
 git difftool --dir-diff      # todas as mudanças numa comparação de pastas
 ```
+
+`git jd` é um alias de `git diff` com `diff.external` só para aquele comando, e
+aceita os mesmos argumentos (`git jd --cached`, `git jd HEAD~1 HEAD`).
 
 ## Linha de comando
 

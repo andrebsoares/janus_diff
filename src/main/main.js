@@ -208,7 +208,7 @@ function buildMenu(view) {
         sep,
         {
           label: 'Configure as Git Diff Tool',
-          click: () => runTool('Git Diff Tool', 'Git is configured. Use "git difftool" for files or "git difftool --dir-diff" for a folder view.',
+          click: () => runTool('Git Diff Tool', 'Git is configured. Use "git jd" (takes the same arguments as "git diff") or "git difftool" for files, or "git difftool --dir-diff" for a folder view.',
             () => Shell.gitSetup(launcher())),
         },
       ],

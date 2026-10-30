@@ -76,6 +76,31 @@ test('git settings wait for the window and use forward slashes', () => {
     ['difftool.janusdiff.cmd', '"C:/Apps/Janus Diff.exe" --wait "$LOCAL" "$REMOTE"']);
 });
 
+test('the git jd alias sets diff.external for that command only', () => {
+  const alias = (l) => new Map(Shell.gitSettings(l)).get('alias.jd');
+  assert.strictEqual(alias(launcher), '-c "diff.external=\\"C:/Apps/Janus Diff.exe\\" --git-external" diff');
+  assert.strictEqual(alias({ exe: 'C:\\e\\electron.exe', args: ['C:\\src\\app'] }),
+    '-c "diff.external=\\"C:/e/electron.exe\\" \\"C:/src/app\\" --git-external" diff');
+  assert.ok(!Shell.gitSettings(launcher).some(([key]) => key === 'diff.external'));
+});
+
+test('git external diff arguments', () => {
+  const cwd = path.resolve('/repo');
+  const parse = (...args) => parseCli(['--git-external', ...args], cwd);
+  const temp = path.resolve('/tmp/git-blob-a1/f.txt');
+  const hex = '4bcfe98e640c8284511312660fb8709b0afa888e';
+  const modified = parse('src/f.txt', temp, hex, '100644', 'src/f.txt', '0'.repeat(40), '100644');
+  assert.deepStrictEqual(modified, { mode: 'open', paths: [temp, path.join(cwd, 'src', 'f.txt')], wait: true, target: null });
+  // Windows passes the missing side of an added or deleted file as nul.
+  for (const missing of ['nul', '/dev/null']) {
+    assert.deepStrictEqual(parse('f.txt', missing, '.', '.', 'f.txt', hex, '100644').paths, ['', path.join(cwd, 'f.txt')]);
+    assert.deepStrictEqual(parse('f.txt', temp, hex, '100644', missing, '.', '.').paths, [temp, '']);
+  }
+  const renamed = parse('old.txt', temp, hex, '100644', 'new.txt', hex, '100644', 'new.txt', 'similarity index 100%\nrename from old.txt\n');
+  assert.deepStrictEqual(renamed.paths, [temp, path.join(cwd, 'new.txt')]);
+  assert.deepStrictEqual(parse('conflict.txt').paths, [path.join(cwd, 'conflict.txt'), '']);
+});
+
 test('command line parsing', () => {
   const cwd = path.resolve('/work');
   assert.deepStrictEqual(parseCli(['a.txt', path.resolve('/x/b.txt')], cwd),

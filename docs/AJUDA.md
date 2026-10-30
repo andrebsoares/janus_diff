@@ -488,11 +488,20 @@ mesma janela.
 diff do Git (no `~/.gitconfig` global). Depois disso:
 
 ```
+git jd                       # abre um arquivo alterado por vez (o mais rápido)
 git difftool                 # abre um arquivo alterado por vez
 git difftool --dir-diff      # abre todas as mudanças numa comparação de pastas
 ```
 
 Cada chamada abre uma janela própria; o Git continua quando ela é fechada.
+
+`git jd` aceita os mesmos argumentos de `git diff` (por exemplo `git jd --cached`
+ou `git jd HEAD~1 HEAD`) e abre bem mais rápido que `git difftool` no Windows.
+O `git diff` normal continua mostrando o resultado no terminal.
+
+Durante um conflito de merge, `git jd` sozinho mostra o diff combinado no terminal,
+porque o Git não chama ferramentas externas nesse caso. Use `git jd --ours` ou
+`git jd --theirs` para abrir o arquivo no Janus Diff.
 
 ---
 
@@ -505,7 +514,8 @@ JanusDiff --select-left <caminho>    memoriza o lado esquerdo (como no Explorer)
 JanusDiff --compare-to <caminho>     compara o lado memorizado com este caminho
 JanusDiff --register-shell           instala o menu de contexto do Explorer
 JanusDiff --unregister-shell         remove o menu de contexto
-JanusDiff --git-setup                configura o Git difftool
+JanusDiff --git-setup                configura o Git difftool e o alias git jd
+JanusDiff --git-external <args>      recebe os argumentos do diff.external do Git (usado pelo git jd)
 ```
 
 Sem `--wait`, se o programa já estiver aberto a comparação vira uma nova aba na

@@ -4,12 +4,24 @@ const path = require('path');
 
 const VALUE_FLAGS = { '--select-left': 'select-left', '--compare-to': 'compare-to', '--compare-selected': 'compare-selected' };
 const PLAIN_FLAGS = { '--register-shell': 'register-shell', '--unregister-shell': 'unregister-shell', '--git-setup': 'git-setup' };
+// How git names the missing side of an added or deleted file.
+const NULL_FILES = ['/dev/null', 'nul'];
+
+// The sides in git's diff.external arguments. Normally:
+//   path old-file old-hex old-mode new-file new-hex new-mode [new-path message]
+// An unmerged file comes as the path alone.
+function externalDiffPaths(args, cwd) {
+  const sides = args.length < 7 ? [args[0], ''] : [args[1], args[4]];
+  return sides.map((p) => (!p || NULL_FILES.includes(p) ? '' : path.resolve(cwd, p)));
+}
 
 // args: the arguments after the executable (and after the app path in
 // development). Unknown switches belong to Electron/Chromium and are skipped.
 //   <left> [<right>]        open a comparison
 //   --wait                  own process that lives until its window closes
 //                           (what `git difftool` needs)
+//   --git-external <args>   the rest are git's diff.external arguments; implies
+//                           --wait (what the `git jd` alias uses)
 //   --select-left <path>    remember the left side (Explorer context menu)
 //   --compare-to <path>     compare the remembered left side with this path
 //   --compare-selected <p>  one item of an Explorer multi-selection; the items
@@ -25,6 +37,10 @@ function parseCli(args, cwd) {
       out.mode = PLAIN_FLAGS[a];
     } else if (a === '--wait') {
       out.wait = true;
+    } else if (a === '--git-external') {
+      out.wait = true;
+      out.paths = externalDiffPaths(args.slice(i + 1), cwd);
+      break;
     } else if (!a.startsWith('-') && out.paths.length < 2) {
       out.paths.push(path.resolve(cwd, a));
     }
