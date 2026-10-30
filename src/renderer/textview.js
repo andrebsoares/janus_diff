@@ -1,6 +1,6 @@
 'use strict';
 // Text Compare view: two aligned panes, section navigation, copy between
-// sides, manual alignment, line editing and saving.
+// sides, manual alignment, editing and saving.
 
 const TV_ROW = 18;
 const TV_TAB = 4;
@@ -31,6 +31,14 @@ const TV_RULE_FIELDS = [
   { key: 'orphansAlwaysImportant', type: 'check', label: 'Orphan lines are always important' },
 ];
 
+// Keys of TV_KEYS that keep their usual meaning inside the line editor.
+const TV_EDIT_KEYS = new Set(['Home', 'End', 'Shift+Home', 'Shift+End', 'Del']);
+
+// Width of a text in columns, counting a tab as a full tab stop.
+function tvColumns(text) {
+  return text.includes('\t') ? text.length + (TV_TAB - 1) * (text.split('\t').length - 1) : text.length;
+}
+
 function tvNewSide() {
   return { path: '', lines: [], eol: '\n', finalNewline: true, encoding: 'utf8', dirty: false, binary: false, maxLen: 0, clipboard: false, mtime: null, size: -1, seen: '' };
 }
@@ -59,6 +67,8 @@ class TextView {
     this.aligns = [];
     this.alignFrom = null;
     this.findText = '';
+    // The line being typed: { input, side, pos, count, text, dirty, goal }.
+    this.edit = null;
     this.build();
     this.load('left', left).then(() => this.load('right', right));
   }
@@ -94,6 +104,8 @@ class TextView {
       pane.addEventListener('mousedown', (e) => this.onMouse(e, side));
       pane.addEventListener('contextmenu', (e) => this.onContextMenu(e, side));
       pane.addEventListener('scroll', () => {
+        // The browser scrolls to the editor's caret, but rows scroll only by VScroller.
+        if (pane.scrollTop) pane.scrollTop = 0;
         const other = this.panes[side === 'left' ? 'right' : 'left'];
         if (other.scrollLeft !== pane.scrollLeft) other.scrollLeft = pane.scrollLeft;
       });
@@ -147,6 +159,7 @@ class TextView {
   }
 
   async load(side, p) {
+    this.closeEdit(true);
     const s = this.sides[side];
     if (p && s.dirty && p !== s.path && !(await Modal.confirm('Open', `Discard unsaved changes to ${api.path.basename(s.path || 'the ' + side + ' side')}?`, 'Discard'))) return;
     Object.assign(s, tvNewSide(), { path: p || '' });
@@ -225,6 +238,7 @@ class TextView {
     }
     s.path = p;
     s.dirty = false;
+    if (this.edit && this.edit.side === side) this.edit.dirty = false;
     s.clipboard = false;
     this.showPath(side);
     return true;
@@ -235,7 +249,7 @@ class TextView {
   // its side has no unsaved edits; otherwise the status bar says so, once
   // per change.
   async checkDisk() {
-    if (this.checking || this.saving || this.body.querySelector('.tv-edit')) return;
+    if (this.checking || this.saving) return;
     this.checking = true;
     try {
       for (const side of ['left', 'right']) {
@@ -275,6 +289,7 @@ class TextView {
     const unchanged = text.eol === s.eol && text.finalNewline === s.finalNewline
       && text.lines.length === s.lines.length && text.lines.every((line, i) => line === s.lines[i]);
     if (!unchanged) {
+      this.closeEdit(true);
       this.pushUndo();
       this.undo[this.undo.length - 1][side === 'left' ? 'dl' : 'dr'] = true;
       this.aligns = [];
@@ -293,6 +308,7 @@ class TextView {
   }
 
   async onClose() {
+    this.closeEdit(true);
     const dirty = ['left', 'right'].filter((s) => this.sides[s].dirty);
     if (!dirty.length) return true;
     const answer = await Modal.show('Close', h('div', { class: 'dlg-text' }, `Save changes to the ${dirty.join(' and ')} side?`),
@@ -321,7 +337,7 @@ class TextView {
     for (const s of [L, R]) {
       let max = 0;
       for (const line of s.lines) {
-        const len = line.includes('\t') ? line.length + (TV_TAB - 1) * (line.split('\t').length - 1) : line.length;
+        const len = tvColumns(line);
         if (len > max) max = len;
       }
       s.maxLen = max;
@@ -446,6 +462,7 @@ class TextView {
       if (this.buttons[cmd].textContent !== `${arrow} ${lines}`) this.buttons[cmd].textContent = `${arrow} ${lines}`;
     }
     this.placeSelButton();
+    this.placeEdit();
     this.renderDetails();
     this.drawThumbViewport();
   }
@@ -555,9 +572,26 @@ class TextView {
   // ---- cursor and selection ----------------------------------------------
 
   onMouse(e, side) {
+    if (e.target.closest('.tv-edit')) {
+      this.edit.goal = null;
+      if (e.button === 0) this.dragFromEdit(side);
+      return;
+    }
+    const pane = this.panes[side];
     const rowEl = e.target.closest('.row');
-    if (!rowEl) return;
-    const k = Number(rowEl.dataset.k);
+    if (!rowEl) {
+      // Below the last line, as in any editor: the end of the text. (The
+      // pane's horizontal scrollbar is the only other thing that gets here.)
+      if (e.button !== 0 || this.alignFrom || e.clientY - pane.getBoundingClientRect().top >= pane.clientHeight) return;
+      e.preventDefault();
+      this.closeEdit(true);
+      this.side = side;
+      this.moveTo(this.vis.length - 1);
+      this.editLine();
+      return;
+    }
+    let k = Number(rowEl.dataset.k);
+    if (this.edit) k = this.closeEditFor(k, side);
     const sel = this.selection(), inSel = k >= sel.lo && k <= sel.hi;
     this.side = side;
     // A right-click inside the selection keeps it for the context menu.
@@ -570,8 +604,9 @@ class TextView {
       this.copyLines(side === 'left' ? 'right' : 'left');
       return;
     }
+    const onText = !!e.target.closest('.tx');
     if (e.button === 0 && !e.shiftKey && sel.n > 1 && inSel && !this.alignFrom && e.detail === 1 && !e.target.classList.contains('copy-btn')) {
-      this.dragBlock(e, side, k);
+      this.dragBlock(e, side, k, onText);
       return;
     }
     this.cur = k;
@@ -604,9 +639,36 @@ class TextView {
       return;
     }
     // Dragging with the button held extends the selection from the clicked
-    // row (or from the anchor, after a Shift+click).
+    // row (or from the anchor, after a Shift+click). A click on the text, or
+    // a drag that stays on its line, puts the caret or a selection there.
+    const x0 = e.clientX, plain = onText && !e.shiftKey;
+    let x = x0;
     this.dragging = true;
+    dragRows(pane, this.scroller, (p) => {
+      x = p.x;
+      if (p.row === this.cur) return;
+      this.cur = p.row;
+      this.scroller.refresh();
+    }, () => {
+      this.dragging = false;
+      this.scroller.refresh();
+      if (plain && this.cur === k && this.anchor === k) {
+        const a = this.caretAt(k, side, x0), b = this.caretAt(k, side, x);
+        this.editLine(Math.min(a, b), Math.max(a, b));
+      }
+    });
+  }
+
+  // A press on the line being edited selects text in it, until the pointer
+  // leaves the line: from there on it selects rows, as a press on a row does.
+  dragFromEdit(side) {
+    const k = this.cur;
     dragRows(this.panes[side], this.scroller, ({ row }) => {
+      if (row === k && !this.dragging) return;
+      if (!this.dragging) {
+        this.closeEdit(true);
+        this.dragging = true;
+      }
       if (row === this.cur) return;
       this.cur = row;
       this.scroller.refresh();
@@ -616,10 +678,35 @@ class TextView {
     });
   }
 
+  // Applies the line being typed and returns where visible row k went, in
+  // case that moved the rows.
+  closeEditFor(k, side) {
+    const row = this.rows[this.vis[k]];
+    const own = side === 'left' ? 'l' : 'r', key = row[own] >= 0 ? own : side === 'left' ? 'r' : 'l';
+    const line = row[key];
+    this.closeEdit(true);
+    const at = this.vis.findIndex((i) => this.rows[i][key] === line);
+    return at < 0 ? k : at;
+  }
+
+  // Column of the line of visible row k under horizontal position x.
+  caretAt(k, side, x) {
+    const tx = this.rowsEl[side].querySelector(`.row[data-k="${k}"] .tx`);
+    if (!tx) return Infinity;
+    const r = tx.getBoundingClientRect();
+    const hit = document.caretRangeFromPoint(x, r.top + r.height / 2);
+    if (!hit || !tx.contains(hit.startContainer)) return Infinity;
+    const range = document.createRange();
+    range.selectNodeContents(tx);
+    range.setEnd(hit.startContainer, hit.startOffset);
+    const text = range.toString();
+    return text.length - (this.showWS ? text.split('→\t').length - 1 : 0);
+  }
+
   // Dragging a selection of several lines onto the other pane inserts a copy
   // of them where it is dropped (Esc cancels); released without moving, it
   // is a plain click on row k.
-  dragBlock(e, side, k) {
+  dragBlock(e, side, k, onText) {
     const to = side === 'left' ? 'right' : 'left', target = this.panes[to];
     const x0 = e.clientX, y0 = e.clientY;
     let moved = false, cancelled = false, gap = -1;
@@ -645,6 +732,7 @@ class TextView {
       if (!moved) this.cur = this.anchor = k;
       if (moved && !cancelled && gap >= 0) this.dropLines(to, gap);
       else this.scroller.refresh();
+      if (!moved && onText) this.editLine(this.caretAt(k, side, x0));
     });
     document.addEventListener('keydown', onKey, true);
   }
@@ -724,14 +812,15 @@ class TextView {
 
   // ---- editing -----------------------------------------------------------
 
-  pushUndo() {
+  // caret: the { side, line, col } to go back to when undone while editing.
+  pushUndo(caret) {
     const L = this.sides.left, R = this.sides.right;
-    this.undo.push({ l: L.lines.slice(), r: R.lines.slice(), dl: L.dirty, dr: R.dirty, al: this.aligns });
+    this.undo.push({ l: L.lines.slice(), r: R.lines.slice(), dl: L.dirty, dr: R.dirty, al: this.aligns, caret });
     if (this.undo.length > 200) this.undo.shift();
     this.redo = [];
   }
 
-  restore(from, to) {
+  restore(from, to, keepLine) {
     const snap = from.pop();
     if (!snap) return;
     const L = this.sides.left, R = this.sides.right;
@@ -739,7 +828,7 @@ class TextView {
     L.lines = snap.l; R.lines = snap.r; L.dirty = snap.dl; R.dirty = snap.dr;
     this.aligns = snap.al;
     this.message = '';
-    this.recompare();
+    this.recompare(keepLine);
   }
 
   insertionPoint(rowIdx, key, side) {
@@ -835,7 +924,7 @@ class TextView {
 
   onContextMenu(e, side) {
     e.preventDefault();
-    if (!e.target.closest('.row') || this.alignFrom) return;
+    if (!e.target.closest('.row, .tv-edit') || this.alignFrom) return;
     const row = this.rows[this.vis[this.cur]];
     const idxs = this.targetRows(true);
     const lineDiff = idxs.some((i) => this.rows[i].type !== 'same');
@@ -862,43 +951,238 @@ class TextView {
     this.recompare(tgt[0]);
   }
 
-  editLine(insertAt) {
+  // Starts typing on the cursor's row, on a line or on a gap (the text is then
+  // inserted there), with the caret at col, by default the end of the line,
+  // and the text up to `end` selected. The input sits over the row, inside
+  // the pane so that it scrolls sideways with it. The lines change only when
+  // it closes; meanwhile the side already counts as modified.
+  editLine(col, end) {
     const row = this.rows[this.vis[this.cur]];
-    const side = this.side, key = side === 'left' ? 'l' : 'r';
-    const idx = insertAt !== undefined ? -1 : row ? row[key] : -1;
+    const side = this.side, key = side === 'left' ? 'l' : 'r', s = this.sides[side];
+    const idx = row ? row[key] : -1;
+    const pos = idx >= 0 ? idx : this.insertionPoint(row ? this.vis[this.cur] : 0, key, side);
+    const text = idx >= 0 ? s.lines[idx] : '';
     this.scroller.ensureVisible(this.cur);
-    const top = this.cur * TV_ROW - this.scroller.bar.scrollTop;
-    const input = h('input', { class: 'tv-edit', type: 'text', spellcheck: false, value: idx >= 0 ? this.sides[side].lines[idx] : '' });
-    input.style.top = Math.max(0, top) + 'px';
-    let finished = false;
-    const finish = (commit) => {
-      if (finished) return;
-      finished = true;
-      input.remove();
-      if (!commit) return;
-      this.pushUndo();
-      const pos = idx >= 0 ? idx : insertAt !== undefined ? insertAt : this.insertionPoint(row ? this.vis[this.cur] : 0, key, side);
-      this.replaceLines(side, pos, idx >= 0 ? 1 : 0, [input.value]);
-      this.recompare(pos);
-    };
-    input.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') finish(true);
-      else if (e.key === 'Escape') finish(false);
+    const input = h('input', { class: 'tv-edit', type: 'text', spellcheck: false, value: text });
+    const ed = { input, side, pos, count: idx >= 0 ? 1 : 0, text, dirty: s.dirty, goal: null };
+    this.edit = ed;
+    input.addEventListener('keydown', (e) => this.onEditKey(e));
+    input.addEventListener('paste', (e) => this.onEditPaste(e));
+    input.addEventListener('input', () => {
+      ed.goal = null;
+      if (!s.dirty) {
+        s.dirty = true;
+        this.afterChange();
+      }
+      this.scroller.ensureVisible(this.cur);
     });
-    input.addEventListener('blur', () => finish(input.value !== (idx >= 0 ? this.sides[side].lines[idx] : '')));
+    // Losing the window keeps the focus here; only a move inside it closes.
+    input.addEventListener('blur', () => { if (this.edit === ed && document.activeElement !== input) this.closeEdit(true); });
     const pane = this.panes[side];
-    input.style.left = pane.offsetLeft + 'px';
-    input.style.width = pane.clientWidth + 'px';
-    this.body.append(input);
-    input.focus();
+    pane.append(input);
+    this.placeEdit();
+    input.focus({ preventScroll: true });
+    const at = Math.min(col === undefined ? text.length : col, text.length);
+    input.setSelectionRange(at, end === undefined ? at : Math.min(end, text.length));
+    const left = input.offsetLeft, x = left + tvColumns(text.slice(0, at)) * (this.charW || 8);
+    if (x < pane.scrollLeft + left) pane.scrollLeft = Math.max(0, x - left);
+    else if (x > pane.scrollLeft + pane.clientWidth - 24) pane.scrollLeft = x - pane.clientWidth + 48;
+  }
+
+  // Keeps the input on its row. A row scrolled away leaves it above the pane,
+  // where typing does not make the browser scroll to it.
+  placeEdit() {
+    const ed = this.edit;
+    if (!ed) return;
+    const pane = this.panes[ed.side], rows = this.rowsEl[ed.side];
+    const top = this.cur * TV_ROW - this.scroller.bar.scrollTop;
+    const tx = rows.querySelector('.tx'), left = tx ? tx.offsetLeft : 0;
+    const textW = left + (tvColumns(ed.input.value) + 4) * (this.charW || 8);
+    ed.input.style.top = (top <= -TV_ROW || top >= pane.clientHeight ? -2 * TV_ROW : top) + 'px';
+    ed.input.style.left = left + 'px';
+    ed.input.style.width = Math.max(rows.offsetWidth, textW) - left + 'px';
+  }
+
+  dropEdit() {
+    const ed = this.edit;
+    this.edit = null;
+    ed.input.remove();
+    this.sides[ed.side].dirty = ed.dirty;
+    return ed;
+  }
+
+  // Ends the editing: commit puts the typed text in the file's lines, and
+  // otherwise the line stays as it was.
+  closeEdit(commit) {
+    if (!this.edit) return;
+    const value = this.edit.input.value;
+    const ed = this.dropEdit();
+    if (commit && value !== ed.text) this.applyEdit(ed, ed.pos, ed.count, [value], ed.pos);
+    else this.afterChange();
+  }
+
+  applyEdit(ed, pos, count, lines, line) {
+    this.pushUndo({ side: ed.side, line: ed.pos, col: ed.input.selectionStart });
+    this.replaceLines(ed.side, pos, count, lines);
+    this.message = '';
+    this.recompare(line);
+  }
+
+  // Replaces `count` lines from pos, the edited one among them, and goes on
+  // typing at the given line and column.
+  changeEdit(pos, count, lines, line, col) {
+    this.applyEdit(this.dropEdit(), pos, count, lines, line);
+    this.editAt(line, col);
+  }
+
+  editAt(line, col) {
+    const key = this.side === 'left' ? 'l' : 'r';
+    const k = this.vis.findIndex((i) => this.rows[i][key] === Math.min(line, this.sides[this.side].lines.length - 1));
+    if (k < 0) {
+      this.message = `Line ${line + 1} is hidden by the current filter`;
+      this.scroller.refresh();
+      return;
+    }
+    this.moveTo(k);
+    this.editLine(col);
+  }
+
+  // Applies the line being typed and goes on typing at the same place.
+  flushEdit() {
+    const ed = this.edit;
+    if (ed.input.value === ed.text) {
+      this.sides[ed.side].dirty = ed.dirty;
+      return;
+    }
+    const col = ed.input.selectionStart;
+    this.closeEdit(true);
+    this.editAt(ed.pos, col);
+  }
+
+  // Moves the caret n lines, skipping gaps, or as far as there are lines;
+  // with nowhere to go it stays where it is.
+  moveEdit(dir, n, col, goal) {
+    const key = this.edit.side === 'left' ? 'l' : 'r', from = this.edit.input.selectionStart;
+    this.closeEdit(true);
+    let target = this.cur;
+    for (let k = this.cur + dir; k >= 0 && k < this.vis.length && n > 0; k += dir) {
+      if (this.rows[this.vis[k]][key] < 0) continue;
+      target = k;
+      n--;
+    }
+    const moved = target !== this.cur;
+    this.moveTo(target);
+    this.editLine(moved ? col : from);
+    this.edit.goal = goal === undefined ? null : goal;
+  }
+
+  // Undo or redo from the editor: the caret stays on the text.
+  editHistory(from, to) {
+    const ed = this.edit, step = from[from.length - 1];
+    const caret = step && step.caret && step.caret.side === ed.side ? step.caret : { line: ed.pos, col: ed.input.selectionStart };
+    this.closeEdit(false);
+    this.restore(from, to, caret.line);
+    this.editAt(caret.line, caret.col);
+  }
+
+  onEditKey(e) {
+    if (e.isComposing) return;
+    const ed = this.edit, input = ed.input, value = input.value, combo = keyCombo(e);
+    const s = this.sides[ed.side];
+    const start = input.selectionStart, end = input.selectionEnd;
+    const atStart = end === 0, atEnd = start === value.length;
+    const goal = ed.goal === null ? start : ed.goal;
+    const handled = () => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    ed.goal = null;
+    switch (combo) {
+      case 'Enter':
+        handled();
+        this.changeEdit(ed.pos, ed.count, ed.count || value ? [value.slice(0, start), value.slice(end)] : [''], ed.pos + 1, 0);
+        return;
+      case 'Esc': handled(); this.closeEdit(false); return;
+      case 'Tab': handled(); document.execCommand('insertText', false, '\t'); return;
+      case 'Shift+Tab': handled(); return;
+      case 'BkSp':
+        if (!atStart || ed.pos === 0) return;
+        handled();
+        this.changeEdit(ed.pos - 1, ed.count + 1, [s.lines[ed.pos - 1] + value], ed.pos - 1, s.lines[ed.pos - 1].length);
+        return;
+      case 'Del':
+        if (!atEnd || ed.pos + ed.count >= s.lines.length) return;
+        handled();
+        this.changeEdit(ed.pos, ed.count + 1, [value + s.lines[ed.pos + ed.count]], ed.pos, value.length);
+        return;
+      case 'Left':
+        if (!atStart || ed.pos === 0) return;
+        handled();
+        this.moveEdit(-1, 1, Infinity);
+        return;
+      case 'Right':
+        if (!atEnd) return;
+        handled();
+        this.moveEdit(1, 1, 0);
+        return;
+      case 'Up': handled(); this.moveEdit(-1, 1, goal, goal); return;
+      case 'Down': handled(); this.moveEdit(1, 1, goal, goal); return;
+      case 'PageUp': handled(); this.moveEdit(-1, this.scroller.pageRows, goal, goal); return;
+      case 'PageDown': handled(); this.moveEdit(1, this.scroller.pageRows, goal, goal); return;
+      case 'Ctrl+Home': handled(); this.moveEdit(-1, Infinity, 0); return;
+      case 'Ctrl+End': handled(); this.moveEdit(1, Infinity, Infinity); return;
+      // The input undoes what was typed in it; past that, the view's history.
+      case 'Ctrl+Z':
+        if (value !== ed.text) return;
+        handled();
+        this.editHistory(this.undo, this.redo);
+        return;
+      case 'Ctrl+Y': case 'Ctrl+Shift+Z':
+        if (!this.redo.length) return;
+        handled();
+        this.editHistory(this.redo, this.undo);
+        return;
+      case 'Ctrl+C':
+        if (start !== end) return;
+        handled();
+        navigator.clipboard.writeText(value);
+        return;
+      default: {
+        const cmd = TV_KEYS[combo];
+        if (!cmd || TV_EDIT_KEYS.has(combo)) return;
+        handled();
+        this.command(cmd);
+      }
+    }
+  }
+
+  // Pasted line breaks make lines, which a single-line input would drop.
+  onEditPaste(e) {
+    const ed = this.edit, input = ed.input, value = input.value;
+    const text = e.clipboardData.getData('text');
+    if (!/[\r\n]/.test(text)) return;
+    e.preventDefault();
+    const lines = text.split(/\r\n|\r|\n/), last = lines.length - 1;
+    const col = lines[last].length;
+    lines[0] = value.slice(0, input.selectionStart) + lines[0];
+    lines[last] += value.slice(input.selectionEnd);
+    this.changeEdit(ed.pos, ed.count, lines, ed.pos + last, col);
+  }
+
+  // A character typed outside the editor starts editing at the end of the
+  // line, and goes on to land in the input.
+  typed(e) {
+    if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey && this.selection().n <= 1 && !this.alignFrom) this.editLine();
   }
 
   insertAfter() {
     const row = this.rows[this.vis[this.cur]];
     const key = this.side === 'left' ? 'l' : 'r';
     const pos = !row ? 0 : row[key] >= 0 ? row[key] + 1 : this.insertionPoint(this.vis[this.cur], key, this.side);
-    this.editLine(pos);
+    this.pushUndo({ side: this.side, line: pos, col: 0 });
+    this.replaceLines(this.side, pos, 0, ['']);
+    this.recompare(pos);
+    this.editAt(pos, 0);
   }
 
   async find(dir, ask) {
@@ -1008,6 +1292,10 @@ class TextView {
   }
 
   command(c) {
+    if (this.edit) {
+      if (c === 'Save' || c === 'SaveAs') this.flushEdit();
+      else this.closeEdit(true);
+    }
     switch (c) {
       case 'FavCompareAll': this.filter = 'all'; this.refilter(); break;
       case 'FavDiff': this.filter = 'diff'; this.refilter(); break;

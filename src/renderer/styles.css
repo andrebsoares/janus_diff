@@ -159,7 +159,8 @@ button { font: inherit; color: inherit; }
 .row .num { flex: none; width: 52px; padding-right: 6px; text-align: right; color: #707070; background: #f3f3f3; border-right: 1px solid #dcdcdc; }
 .row .hexnum { width: 78px; }
 .row .gut { flex: none; width: 18px; text-align: center; background: #f3f3f3; }
-.row .tx { flex: 1; padding-left: 4px; }
+.row .tx { flex: 1; padding-left: 4px; cursor: text; }
+.tv-body.aligning .row .tx { cursor: inherit; }
 .row.diff { background: var(--diff-bg); }
 .row.diff.orphan .tx { color: var(--diff-fg); }
 .row.insig { background: var(--insig-bg); }
@@ -224,13 +225,16 @@ button { font: inherit; color: inherit; }
 
 .tv-edit {
   position: absolute;
-  height: 20px;
-  margin-top: -1px;
-  padding: 0 0 0 88px;
-  border: 1px solid var(--accent);
+  height: 18px;
+  box-sizing: border-box;
+  padding: 0 0 0 4px;
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--accent);
   background: #fffbe0;
   font: 13px/18px var(--mono);
+  tab-size: 4;
   outline: none;
+  user-select: text;
   z-index: 5;
 }
 
