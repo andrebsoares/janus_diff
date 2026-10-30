@@ -1,7 +1,7 @@
 {
   "name": "janus-diff",
   "productName": "Janus Diff",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Side-by-side folder, text and hex comparison tool",
   "main": "src/main/main.js",
   "author": "Andre Soares <andre09soares@gmail.com>",
