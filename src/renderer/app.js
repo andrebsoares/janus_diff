@@ -13,7 +13,7 @@ const SHORTCUT_HELP = [
   ['Text Compare', [['Ctrl+R / Ctrl+L', 'Copy section (or selection) to right / left'], ['Ctrl+Shift+R / L', 'Copy only the line(s) to right / left, then go to the next difference'],
     ['Click → / ←', 'Copy that line, or the whole selection (Shift+click: its section)'],
     ['Drag, Shift+click', 'Select lines; then → / ←, Ctrl+Shift+R / L or the floating button copies them'],
-    ['Shift+Up/Down, PgUp/PgDn, Home/End', 'Extend the selection'], ['Drag the selection', 'Drop it on the other pane to insert a copy there (Esc cancels)'], ['Right-click', 'Copy line / section menu'], ['F2, Enter', 'Edit line'], ['F7', 'Align line with a line on the other side (Esc cancels)'], ['Ctrl+Enter', 'Insert line after'], ['Del', 'Delete line(s)'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], ['Ctrl+S, F12', 'Save, Save As'], ['Ctrl+F, F3, Shift+F3', 'Find, find next, find previous'], ['Ctrl+G', 'Go to line'], ['Ctrl+D', 'Select section'], ['Ctrl+C', 'Copy the text of the line(s)'], ['Alt+Left / Right, F6', 'Focus left / right pane, switch pane'], ['Ctrl+Shift+C', 'Copy as unified diff (patch)'], ['Ctrl+Shift+V', 'Compare the clipboard text on this side']]],
+    ['Shift+Up/Down, PgUp/PgDn, Home/End', 'Extend the selection'], ['Drag the selection', 'Drop it on the other pane to insert a copy there (Esc cancels)'], ['Right-click', 'Copy line / section menu'], ['Click the text, F2, Enter, or type', 'Edit: Enter breaks the line, arrows move between lines, Esc reverts the line'], ['F7', 'Align line with a line on the other side (Esc cancels)'], ['Ctrl+Enter', 'Insert line after'], ['Del', 'Delete selected line(s), or the character while editing'], ['Ctrl+Z / Ctrl+Y', 'Undo / redo'], ['Ctrl+S, F12', 'Save, Save As'], ['Ctrl+F, F3, Shift+F3', 'Find, find next, find previous'], ['Ctrl+G', 'Go to line'], ['Ctrl+D', 'Select section'], ['Ctrl+C', 'Copy the text of the line(s)'], ['Alt+Left / Right, F6', 'Focus left / right pane, switch pane'], ['Ctrl+Shift+C', 'Copy as unified diff (patch)'], ['Ctrl+Shift+V', 'Compare the clipboard text on this side']]],
   ['Folder Compare', [['Enter', 'Open folder / compare files'], ['Ctrl+R / Ctrl+L', 'Copy to right / left'], ['Ctrl+M', 'Compare contents of selection'], ['Ctrl+E', 'Exclude selection'], ['Del, Shift+Del', 'Delete, permanent delete'], ['F2', 'Rename'], ['Ctrl+A', 'Select all'], ['Drag, Shift+click, Ctrl+click', 'Select a range / add or remove an item'], ['Shift+Up/Down, PgUp/PgDn, Home/End', 'Extend the selection'], ['Ctrl+F, F3, Shift+F3', 'Find filename, next, previous'], ['Left / Right', 'Collapse / expand'], ['Backspace', 'Up one level'], ['Alt+Left / Right', 'Active side (delete, rename, new folder)'], ['Ctrl+Alt+L', 'Legend']]],
   ['Hex Compare', [['Ctrl+G', 'Go to offset (hex)'], ['Ctrl+Home / Ctrl+End', 'Start / end of the files'], ['Up/Down/PgUp/PgDn', 'Move']]],
 ];
@@ -175,7 +175,10 @@ const App = {
     // Inside a text field only function keys reach the view.
     const fromField = inField && !APP_KEYS[combo] && /^(Shift\+)?F\d+$/.test(combo) && this.active && this.active.keymap[combo];
     const run = cmd || fromField;
-    if (!run) return;
+    if (!run) {
+      if (!inField && this.active && this.active.typed) this.active.typed(e);
+      return;
+    }
     e.preventDefault();
     this.command(run);
   },

@@ -362,8 +362,6 @@ async function crlfLatin1Tests() {
       await sleep(200);
       await page.keyboard.press('End');
       await page.keyboard.type(' ç');
-      await page.keyboard.press('Enter');
-      await sleep(200);
       await page.keyboard.press('Control+S');
       await sleep(700);
       const buf = fs.readFileSync(L);
@@ -371,6 +369,320 @@ async function crlfLatin1Tests() {
       if (errors.length) check(`save: ${file} sem erros`, false, errors);
     } finally { await app.close(); }
   }
+}
+
+// ------------------------------------------------------------------------
+// Editing as in a text editor, with the real mouse and keyboard.
+async function editorTests() {
+  const dir = path.join(WORK, 'editor');
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  const L = path.join(dir, 'left.txt'), R = path.join(dir, 'right.txt');
+  const long = 'x'.repeat(300);
+  fs.writeFileSync(L, ['alpha', 'beta', 'gamma', 'delta', '\tindented', 'only left', long, 'last'].join('\n') + '\n');
+  fs.writeFileSync(R, ['alpha', 'beta!', 'gamma', 'delta', '\tindented', long, 'last'].join('\n') + '\n');
+  const leftDisk = () => fs.readFileSync(L, 'utf8');
+  const { app, page, errors } = await launch('editor', [L, R]);
+  const state = () => page.evaluate(() => {
+    const v = App.active, ed = v.edit, a = document.activeElement;
+    return { open: !!ed, focused: !!ed && a === ed.input, value: ed ? ed.input.value : null, pos: ed ? ed.pos : -1, col: ed ? ed.input.selectionStart : -1,
+      colEnd: ed ? ed.input.selectionEnd : -1, left: v.sides.left.lines.slice(), right: v.sides.right.lines.slice(), dirty: [v.sides.left.dirty, v.sides.right.dirty],
+      undo: v.undo.length, cur: v.cur, anchor: v.anchor, side: v.side, title: v.title };
+  });
+  // Page position of column col of a visible row's text.
+  const at = (side, k, col) => page.evaluate(([side, k, col]) => {
+    const v = App.active, tx = v.rowsEl[side].querySelector(`.row[data-k="${k}"] .tx`), r = tx.getBoundingClientRect();
+    return { x: r.left + 4 + col * v.charW + v.charW * 0.3, y: r.top + r.height / 2 };
+  }, [side, k, col]);
+  const rowOf = (side, line) => page.evaluate(([side, line]) => App.active.vis.findIndex((i) => App.active.rows[i][side === 'left' ? 'l' : 'r'] === line), [side, line]);
+  const clickCol = async (side, line, col) => { const p = await at(side, await rowOf(side, line), col); await page.mouse.click(p.x, p.y); await sleep(120); };
+  const press = async (...keys) => { for (const k of keys) { await page.keyboard.press(k); await sleep(60); } };
+  try {
+    const win = await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return { max: w.isMaximized(), visible: w.isVisible() }; });
+    check('janela: abre maximizada e visível', win.max && win.visible, win);
+
+    // One click is enough, at the clicked column.
+    await clickCol('left', 2, 2);
+    let s = await state();
+    check('editor: um clique abre a edição na coluna clicada', s.open && s.focused && s.pos === 2 && s.col === 2, { pos: s.pos, col: s.col });
+    await shot(page, 'w40-editor-open');
+    await page.keyboard.type('XY');
+    await sleep(100);
+    s = await state();
+    check('editor: digitar insere na posição do cursor', s.value === 'gaXYmma', s.value);
+    check('editor: linha digitada já marca o lado como alterado', s.dirty[0] && s.title.endsWith('*'), s.title);
+
+    // Enter breaks the line and neither saves nor leaves the editor.
+    const disk = leftDisk();
+    await press('Enter');
+    await sleep(100);
+    s = await state();
+    check('editor: Enter quebra a linha', s.left[2] === 'gaXY' && s.left[3] === 'mma', s.left.slice(1, 5));
+    check('editor: Enter continua editando na linha nova', s.open && s.focused && s.pos === 3 && s.col === 0, { pos: s.pos, col: s.col });
+    check('editor: Enter não grava o arquivo', leftDisk() === disk);
+    await press('Enter');
+    await page.keyboard.type('new');
+    s = await state();
+    check('editor: Enter seguido abre linha em branco e segue digitando', s.left[3] === '' && s.value === 'newmma', s.left.slice(2, 5));
+
+    // Line joins.
+    await press('Home', 'Backspace');
+    await sleep(100);
+    s = await state();
+    check('editor: Backspace no início junta com a anterior', s.left[3] === 'newmma' && s.value === 'newmma' && s.pos === 3 && s.col === 0, { line: s.value, pos: s.pos, col: s.col });
+    await press('Backspace');
+    await sleep(100);
+    s = await state();
+    check('editor: Backspace junta com a linha de texto anterior', s.value === 'gaXYnewmma' && s.pos === 2 && s.col === 4, { line: s.value, col: s.col });
+    await press('End', 'Delete');
+    await sleep(100);
+    s = await state();
+    check('editor: Delete no fim junta com a seguinte', s.value === 'gaXYnewmmadelta' && s.left[3] === '\tindented' && s.col === 10, { line: s.value, col: s.col });
+
+    // Undo goes step by step and keeps the caret on the text.
+    await page.keyboard.type('!');
+    await press('Control+Z');
+    await sleep(100);
+    s = await state();
+    check('editor: Ctrl+Z desfaz primeiro a digitação na linha', s.value === 'gaXYnewmmadelta', s.value);
+    await press('Control+Z');
+    await sleep(100);
+    s = await state();
+    check('editor: Ctrl+Z seguinte desfaz a junção, sem fechar a edição', s.open && s.left[3] === 'delta' && s.left[2] === 'gaXYnewmma', s.left.slice(2, 4));
+    for (let i = 0; i < 8 && (await state()).undo; i++) await press('Control+Z');
+    await sleep(100);
+    s = await state();
+    check('editor: desfazer tudo volta ao original, sem alteração pendente', s.open && s.left[2] === 'gamma' && s.left[3] === 'delta' && !s.dirty[0], { lines: s.left.slice(2, 4), dirty: s.dirty });
+    await press('Escape');
+
+    // Moving around.
+    await clickCol('left', 1, 3);
+    await press('ArrowDown');
+    s = await state();
+    check('editor: seta para baixo mantém a coluna', s.pos === 2 && s.col === 3, { pos: s.pos, col: s.col });
+    await clickCol('left', 2, 5);
+    await press('ArrowUp', 'ArrowDown');
+    s = await state();
+    check('editor: coluna volta depois de passar por linha mais curta', s.pos === 2 && s.col === 5, { pos: s.pos, col: s.col });
+    await clickCol('left', 2, 0);
+    await press('ArrowLeft');
+    s = await state();
+    check('editor: ← no início vai para o fim da linha anterior', s.pos === 1 && s.col === 4, { pos: s.pos, col: s.col });
+    await press('ArrowRight');
+    s = await state();
+    check('editor: → no fim vai para o início da linha seguinte', s.pos === 2 && s.col === 0, { pos: s.pos, col: s.col });
+    await press('Control+End');
+    s = await state();
+    check('editor: Ctrl+End vai para o fim do texto', s.pos === 7 && s.col === 4, { pos: s.pos, col: s.col });
+    await press('Control+Home');
+    s = await state();
+    check('editor: Ctrl+Home vai para o início do texto', s.pos === 0 && s.col === 0, { pos: s.pos, col: s.col });
+    await press('Escape');
+
+    // Esc only reverts the current line; Tab types a tab.
+    await clickCol('left', 3, 0);
+    await page.keyboard.type('zzz');
+    await press('Escape');
+    await sleep(100);
+    s = await state();
+    check('editor: Esc descarta a digitação da linha', !s.open && s.left[3] === 'delta' && !s.dirty[0], { line: s.left[3], dirty: s.dirty });
+    await clickCol('left', 3, 0);
+    await press('Tab');
+    s = await state();
+    check('editor: Tab insere tabulação e não muda o foco', s.focused && s.value === '\tdelta', s.value);
+    await press('Escape');
+
+    // Clicking a column past a tab, with visible whitespace too.
+    const tabRow = await rowOf('left', 4);
+    const p4 = await page.evaluate((k) => {
+      const v = App.active, tx = v.rowsEl.left.querySelector(`.row[data-k="${k}"] .tx`), r = tx.getBoundingClientRect();
+      return { x: r.left + 4 + (4 + 2.3) * v.charW, y: r.top + r.height / 2 };
+    }, tabRow);
+    await page.mouse.click(p4.x, p4.y);
+    await sleep(120);
+    s = await state();
+    check('editor: clique depois de um tab acerta a coluna', s.pos === 4 && s.col === 3, { col: s.col });
+    await press('Escape');
+    await page.evaluate(() => App.active.command('ShowWS'));
+    await sleep(100);
+    await page.mouse.click(p4.x, p4.y);
+    await sleep(120);
+    s = await state();
+    check('editor: clique com espaços visíveis acerta a coluna', s.pos === 4 && s.col === 3, { col: s.col });
+    await press('Escape');
+    await page.evaluate(() => App.active.command('ShowWS'));
+
+    // Dragging inside a line selects text.
+    const d0 = await at('left', await rowOf('left', 2), 1), d1 = await at('left', await rowOf('left', 2), 4);
+    await page.mouse.move(d0.x, d0.y); await page.mouse.down();
+    await page.mouse.move(d1.x, d1.y, { steps: 5 }); await page.mouse.up();
+    await sleep(120);
+    s = await state();
+    check('editor: arrastar dentro da linha seleciona o texto', s.open && s.col === 1 && s.colEnd === 4, { col: s.col, end: s.colEnd });
+    await page.keyboard.type('Q');
+    s = await state();
+    check('editor: digitar troca o texto selecionado', s.value === 'gQa', s.value);
+    await press('Escape');
+
+    // Double click on the open editor selects a word (native).
+    await clickCol('left', 3, 2);
+    const dc = await at('left', await rowOf('left', 3), 2);
+    await page.mouse.dblclick(dc.x, dc.y);
+    await sleep(120);
+    s = await state();
+    check('editor: duplo clique seleciona a palavra', s.open && s.col === 0 && s.colEnd === 5, { col: s.col, end: s.colEnd });
+    await press('Escape');
+
+    // Dragging from the line being edited goes over to row selection.
+    await clickCol('left', 1, 1);
+    const r0 = await at('left', await rowOf('left', 1), 1), r1 = await at('left', await rowOf('left', 3), 1);
+    await page.mouse.move(r0.x, r0.y); await page.mouse.down();
+    await page.mouse.move(r1.x, r1.y, { steps: 6 }); await page.mouse.up();
+    await sleep(150);
+    s = await state();
+    check('editor: arrastar a partir da linha aberta seleciona linhas', !s.open && Math.abs(s.cur - s.anchor) === 2, { cur: s.cur, anchor: s.anchor });
+    await page.keyboard.press('Control+C');
+    await press('Escape');
+
+    // The line number selects without editing, so Del removes the line.
+    const num = await tvRow(page, 'left', await rowOf('left', 3), 'num');
+    await page.mouse.click(num.x, num.y);
+    await sleep(100);
+    s = await state();
+    check('editor: clique no número da linha não abre a edição', !s.open);
+    await press('Delete');
+    await sleep(100);
+    s = await state();
+    check('editor: Del fora da edição exclui a linha', s.left[3] === '\tindented', s.left.slice(2, 5));
+    await press('Control+Z');
+    await sleep(100);
+
+    // Typing with no editor open starts one.
+    await page.evaluate(() => { const v = App.active; v.side = 'left'; v.cur = v.anchor = v.vis.findIndex((i) => v.rows[i].l === 0); v.scroller.refresh(); });
+    await page.keyboard.type('zy');
+    await sleep(100);
+    s = await state();
+    check('editor: digitar fora da edição começa a editar no fim da linha', s.open && s.value === 'alphazy', s.value);
+    await press('Escape');
+
+    // Multi-line paste.
+    await app.evaluate(({ clipboard }) => clipboard.writeText('one\r\ntwo\nthree'));
+    await clickCol('left', 0, 2);
+    await press('Control+V');
+    await sleep(150);
+    s = await state();
+    check('editor: colar várias linhas cria as linhas', s.left.slice(0, 3).join('|') === 'alone|two|threepha' && s.pos === 2 && s.col === 5, { lines: s.left.slice(0, 3), col: s.col });
+    await press('Control+Z');
+    await sleep(100);
+    s = await state();
+    check('editor: colar é um passo de desfazer', s.left[0] === 'alpha' && s.left[1] === 'beta', s.left.slice(0, 2));
+    await press('Escape');
+
+    // A gap: what is typed there becomes a line in that place.
+    const orphan = await rowOf('left', 5);
+    await page.evaluate((k) => App.active.scroller.ensureVisible(k), orphan);
+    const gp = await at('right', orphan, 0);
+    await page.mouse.click(gp.x, gp.y);
+    await sleep(120);
+    s = await state();
+    check('editor: clique numa lacuna abre a edição', s.open && s.side === 'right' && s.value === '', { side: s.side, value: s.value });
+    await page.keyboard.type('filled');
+    await press('Escape');
+
+    // Horizontal scrolling follows the caret, in a pane scrolled sideways too.
+    await clickCol('left', await page.evaluate(() => App.active.sides.left.lines.findIndex((l) => l.startsWith('xxx'))), 2);
+    await press('End');
+    await page.keyboard.type('END');
+    await sleep(150);
+    const hs = await page.evaluate(() => { const v = App.active, p = v.panes.left, r = v.edit.input.getBoundingClientRect(), pr = p.getBoundingClientRect(); return { scroll: p.scrollLeft, other: v.panes.right.scrollLeft, top: p.scrollTop, inputRight: r.right, paneRight: pr.right, value: v.edit.input.value.length, inner: v.edit.input.scrollLeft }; });
+    check('editor: linha longa rola o painel até o cursor', hs.scroll > 0 && hs.other === hs.scroll && hs.top === 0 && hs.inner === 0 && hs.value === 303, hs);
+    await shot(page, 'w41-editor-long-line');
+    await press('Escape');
+    await page.evaluate(() => { App.active.panes.left.scrollLeft = 0; });
+
+    // Wheel keeps the input on its row; typing brings the row back.
+    await page.evaluate(() => { App.active.sides.left.lines.push(...Array.from({ length: 300 }, (_, i) => 'pad ' + i)); App.active.recompare(0); });
+    await clickCol('left', 3, 1);
+    const yBefore = await page.evaluate(() => App.active.edit.input.getBoundingClientRect().top);
+    const wp = await at('left', await rowOf('left', 3), 1);
+    await page.mouse.move(wp.x, wp.y);
+    await page.mouse.wheel(0, 36);
+    await sleep(150);
+    const yAfter = await page.evaluate(() => App.active.edit.input.getBoundingClientRect().top);
+    check('editor: rolar leva a caixa de edição junto com a linha', Math.round(yBefore - yAfter) === 36, { yBefore, yAfter });
+    await page.mouse.wheel(0, 2000);
+    await sleep(150);
+    s = await state();
+    check('editor: rolar para longe não fecha a edição', s.open && s.focused && s.pos === 3);
+    await page.keyboard.type('w');
+    await sleep(150);
+    const seen = await page.evaluate(() => { const v = App.active, r = v.edit.input.getBoundingClientRect(), p = v.panes.left.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, paneTop: p.top, paneBottom: p.bottom, styleTop: v.edit.input.style.top, cur: v.cur, bar: v.scroller.bar.scrollTop, paneScroll: v.panes.left.scrollTop }; });
+    check('editor: digitar traz a linha de volta para a tela', seen.top >= seen.paneTop - 1 && seen.bottom <= seen.paneBottom + 1, seen);
+    await press('Escape');
+    await page.evaluate(() => { const v = App.active; v.sides.left.lines.length = 8; v.sides.left.dirty = false; v.undo = []; v.recompare(0); });
+    await page.evaluate(() => App.active.scroller.ensureVisible(0));
+
+    // Clicking another line keeps what was typed, and lands where it pointed.
+    await clickCol('left', 1, 0);
+    await page.keyboard.type('A');
+    await clickCol('left', 3, 2);
+    s = await state();
+    check('editor: clicar em outra linha aplica a digitação e abre lá', s.left[1] === 'Abeta' && s.pos === 3 && s.col === 2, { line: s.left[1], pos: s.pos, col: s.col });
+    await press('Escape');
+
+    // Below the last line: the end of the text.
+    const below = await page.evaluate(() => { const v = App.active, p = v.panes.left.getBoundingClientRect(), last = v.rowsEl.left.querySelector('.row:last-child').getBoundingClientRect(); return { x: p.left + 300, y: last.bottom + 40, ok: last.bottom + 40 < p.top + v.panes.left.clientHeight }; });
+    if (below.ok) {
+      await page.mouse.click(below.x, below.y);
+      await sleep(120);
+      s = await state();
+      check('editor: clique abaixo do texto vai para o fim', s.open && s.pos === 7 && s.col === 4, { pos: s.pos, col: s.col });
+      await press('Escape');
+    } else skip('editor: clique abaixo do texto', 'sem espaço abaixo da última linha');
+
+    // Ctrl+S with the line open: saved, and typing goes on.
+    await clickCol('left', 3, 5);
+    await page.keyboard.type('-saved');
+    await press('Control+S');
+    await sleep(500);
+    s = await state();
+    check('editor: Ctrl+S grava a linha em digitação', leftDisk().includes('delta-saved\n') && !s.dirty[0], { dirty: s.dirty });
+    check('editor: Ctrl+S não sai da edição', s.open && s.focused && s.pos === 3 && s.col === 11, { pos: s.pos, col: s.col });
+    await page.keyboard.type('+more');
+    await press('Escape');
+    await sleep(100);
+    s = await state();
+    check('editor: Esc depois de salvar não deixa o lado como alterado', s.left[3] === 'delta-saved' && !s.dirty[0], { line: s.left[3], dirty: s.dirty });
+
+    // Other shortcuts still work from inside the editor.
+    await clickCol('left', 1, 0);
+    await press('Control+Shift+R');
+    await sleep(150);
+    s = await state();
+    check('editor: atalho da comparação funciona de dentro da edição', !s.open && s.right[1] === s.left[1], { l: s.left[1], r: s.right[1] });
+    await press('Control+Z');
+    await sleep(100);
+
+    // A file changed elsewhere is still picked up with an idle editor open.
+    await clickCol('right', 3, 0);
+    const updated = fs.readFileSync(R, 'utf8').replace('delta', 'delta outside');
+    fs.writeFileSync(R, updated);
+    await sleep(2200);
+    s = await state();
+    check('editor: edição aberta sem alterações não impede recarregar o arquivo', s.right.includes('delta outside'), s.right.slice(2, 4));
+
+    // Unsaved typing is kept by the close prompt.
+    await clickCol('left', 2, 0);
+    await page.keyboard.type('pending');
+    await page.keyboard.press('Control+W');
+    await sleep(300);
+    const dl = await dialogs(page);
+    check('editor: fechar a aba com linha em digitação pergunta antes', dl.includes('Close'), dl);
+    await clickDialogButton(page, 'Save');
+    await sleep(500);
+    check('editor: o texto em digitação é gravado', leftDisk().includes('pendinggamma\n'));
+    check('editor: sem erros', errors.length === 0, errors);
+  } finally { await app.close(); }
 }
 
 async function hexTests() {
@@ -417,7 +729,7 @@ async function homeAndSessions() {
 }
 
 (async () => {
-  for (const [name, fn] of [['folders', folderTests], ['text', textTests], ['selbtn', selButtonTests], ['encoding', crlfLatin1Tests], ['hex', hexTests], ['dpi', dpiShots], ['sessions', homeAndSessions]]) {
+  for (const [name, fn] of [['folders', folderTests], ['text', textTests], ['selbtn', selButtonTests], ['encoding', crlfLatin1Tests], ['editor', editorTests], ['hex', hexTests], ['dpi', dpiShots], ['sessions', homeAndSessions]]) {
     try { await fn(); } catch (e) { check(`${name}: exceção`, false, String(e.stack || e).split('\n').slice(0, 4).join(' | ')); }
   }
   const failed = results.filter((r) => !r.ok), skipped = results.filter((r) => r.skipped);

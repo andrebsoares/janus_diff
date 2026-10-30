@@ -235,6 +235,7 @@ function createWindow() {
     height: 800,
     minWidth: 720,
     minHeight: 420,
+    show: false,
     backgroundColor: '#f0f0f0',
     title: 'Janus Diff',
     icon: path.join(__dirname, '..', 'icon.png'),
@@ -244,6 +245,8 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  // Shows the window too; width and height are its restored size.
+  win.maximize();
   Menu.setApplicationMenu(buildMenu('home'));
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

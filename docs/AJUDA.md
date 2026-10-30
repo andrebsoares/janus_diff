@@ -378,12 +378,26 @@ anterior. O alinhamento pode ser desfeito com **Ctrl+Z**.
 
 | Ação | Como |
 |---|---|
-| Editar a linha | **F2**, **Enter**, duplo clique ou botão **✎ Edit** — **Enter** confirma, **Esc** cancela |
+| Começar a editar | **um clique** no texto (o cursor fica onde você clicou), ou digite direto, ou **F2**, **Enter**, botão **✎ Edit** |
+| Quebrar a linha | **Enter** — a edição continua na linha nova |
+| Juntar duas linhas | **Backspace** no início da linha ou **Delete** no fim |
+| Andar pelo texto | setas (atravessam o fim e o início das linhas), **Home**, **End**, **PgUp**, **PgDn**, **Ctrl+Home**, **Ctrl+End** |
+| Selecionar texto na linha | arrastar dentro da linha, duplo clique na palavra, **Shift+←/→** |
+| Colar várias linhas | **Ctrl+V** — cada quebra de linha vira uma linha |
+| Inserir uma tabulação | **Tab** |
+| Escrever onde só o outro lado tem linha | clique na lacuna (área listrada) e digite |
+| Sair da edição | **Esc** descarta o que foi digitado na linha; clicar em outro lugar mantém |
 | Inserir uma linha depois da atual | **Ctrl+Enter** |
-| Excluir linha(s) | **Del** (no lado ativo) |
+| Excluir linha(s) inteira(s) | clique no número da linha (ou selecione as linhas) e **Del** |
 | Desfazer / refazer | **Ctrl+Z** / **Ctrl+Y** (ou **Ctrl+Shift+Z**), botões **↶ Undo** / **↷ Redo** |
 
-O histórico guarda até 200 passos.
+Nada vai para o disco enquanto você edita: só **Ctrl+S** grava o arquivo, e a
+edição continua depois de salvar. A comparação é refeita quando você sai da
+linha (com **Enter**, as setas ou um clique). Os outros atalhos da comparação,
+como **Ctrl+N** e **Ctrl+Shift+R**, funcionam durante a edição.
+
+O histórico guarda até 200 passos. Durante a edição, **Ctrl+Z** primeiro desfaz
+o que foi digitado na linha e depois os passos anteriores.
 
 ### Salvar
 
@@ -562,9 +576,9 @@ janela existente. Caminhos relativos são resolvidos a partir da pasta atual.
 | Ctrl+Shift+R / Ctrl+Shift+L | Copiar só a(s) linha(s) e ir para a próxima diferença |
 | F7 | Alinhar a linha com uma linha do outro lado |
 | Esc | Cancelar alinhamento ou arraste |
-| F2, Enter | Editar linha |
+| Clique no texto, F2, Enter | Editar (na edição, **Enter** quebra a linha e **Esc** descarta a digitação) |
 | Ctrl+Enter | Inserir linha depois |
-| Del | Excluir linha(s) |
+| Del | Excluir linha(s) selecionada(s); na edição, apagar o caractere |
 | Ctrl+Z / Ctrl+Y | Desfazer / refazer |
 | Ctrl+S / F12 | Salvar / salvar como |
 | Ctrl+F, F3, Shift+F3 | Localizar, próximo, anterior |
