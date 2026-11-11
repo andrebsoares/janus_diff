@@ -4,6 +4,8 @@
 
 const TV_ROW = 18;
 const TV_TAB = 4;
+// Matching lines kept above and below each difference when showing only differences.
+const TV_CONTEXT = 5;
 
 const TV_KEYS = {
   'Ctrl+S': 'Save', F12: 'SaveAs', F5: 'Refresh', 'Ctrl+Z': 'Undo', 'Ctrl+Y': 'Redo', 'Ctrl+Shift+Z': 'Redo',
@@ -359,10 +361,21 @@ class TextView {
       keepLine = row ? Math.max(row.l, row.r) : 0;
     }
     this.vis = [];
-    this.rows.forEach((row, i) => {
-      const k = this.kind(row);
-      if (this.filter === 'all' || (this.filter === 'diff' ? k !== 'same' : k === 'same')) this.vis.push(i);
-    });
+    if (this.filter === 'diff') {
+      // Differences with TV_CONTEXT matching lines around each one.
+      let until = -1;
+      this.rows.forEach((row, i) => {
+        if (this.kind(row) === 'same') return;
+        for (let j = Math.max(i - TV_CONTEXT, until + 1); j < i; j++) this.vis.push(j);
+        this.vis.push(i);
+        until = i;
+        for (let j = i + 1; j <= i + TV_CONTEXT && j < this.rows.length && this.kind(this.rows[j]) === 'same'; j++) { this.vis.push(j); until = j; }
+      });
+    } else {
+      this.rows.forEach((row, i) => {
+        if (this.filter === 'all' || this.kind(row) === 'same') this.vis.push(i);
+      });
+    }
     let cur = 0;
     if (keepLine !== undefined) {
       cur = this.vis.findIndex((i) => this.rows[i][key] >= keepLine || (this.rows[i][key] < 0 && Math.max(this.rows[i].l, this.rows[i].r) >= keepLine));
@@ -431,6 +444,9 @@ class TextView {
     const inSel = sel.n > 1 && k >= sel.lo && k <= sel.hi;
     if (inSel) cls += side === this.side ? ' sel sel-src' : ' sel';
     if (k === this.cur) cls += side === this.side ? ' cur' : ' cur-other';
+    // A divider where filtered-out lines were skipped.
+    const skipped = this.vis[k] - (k > 0 ? this.vis[k - 1] + 1 : 0);
+    if (skipped > 0) cls += ' hunk';
     // Gutter: the section's copy button on its first row with a line on this
     // side, and on every differing row a button that copies just that row
     // (from a gap it removes the other side's line), or the whole selection
@@ -443,7 +459,8 @@ class TextView {
       lineBtn = `<span class="line-btn" title="${what} (Shift+click: whole section)">${side === 'left' ? '→' : '←'}</span>`;
     }
     const num = this.showNums ? `<span class="num">${idx >= 0 ? idx + 1 : ''}</span>` : '';
-    return `<div class="${cls}" data-k="${k}">${num}<span class="gut">${btn}</span><span class="gut line">${lineBtn}</span><span class="tx">${text}</span></div>`;
+    const hidden = skipped > 0 ? ` title="${skipped} hidden line${skipped > 1 ? 's' : ''} above"` : '';
+    return `<div class="${cls}" data-k="${k}"${hidden}>${num}<span class="gut">${btn}</span><span class="gut line">${lineBtn}</span><span class="tx">${text}</span></div>`;
   }
 
   render(first, n, offset) {

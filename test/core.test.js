@@ -205,6 +205,30 @@ test('folder comparison classifies files and folders', async () => {
   }
 });
 
+test('folder comparison follows links but not loops, and can be cancelled', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-test-'));
+  const L = path.join(root, 'L'), R = path.join(root, 'R'), X = path.join(root, 'X');
+  for (const [p, data] of [[path.join(L, 'a/f.txt'), 'f'], [path.join(R, 'a/f.txt'), 'f'], [path.join(X, 'x.txt'), 'x']]) {
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, data);
+  }
+  // Junctions need no privileges on Windows; elsewhere the type is ignored.
+  fs.symlinkSync(L, path.join(L, 'a/back'), 'junction');
+  fs.symlinkSync(X, path.join(L, 'ext'), 'junction');
+  try {
+    const res = await Dir.compareFolders(L, R, {});
+    const byRel = (nodes) => Object.fromEntries(nodes.flatMap((n) => [[n.rel, n], ...(n.isDir ? Object.entries(byRel(n.children)) : [])]));
+    const all = byRel(res.children);
+    assert.strictEqual(res.loops, 1);
+    assert.strictEqual(all['a/back'].loop, true);
+    assert.deepStrictEqual(all['a/back'].children, []);
+    assert.strictEqual(all['ext/x.txt'].status, 'orphanLeft');
+    await assert.rejects(Dir.compareFolders(L, R, {}, null, { cancelled: true }), (err) => err.cancelled === true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('recheckContents reclassifies chosen files and their folders', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cc-test-'));
   const L = path.join(root, 'L'), R = path.join(root, 'R');

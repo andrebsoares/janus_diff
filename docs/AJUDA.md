@@ -109,8 +109,13 @@ A cor de cada item indica o resultado da comparação (veja **View → Legend**,
 
 A barra de status mostra o caminho e o resultado do item atual, e os totais:
 diferentes, órfãos à esquerda, órfãos à direita, iguais e selecionados.
-Durante a varredura ela mostra o progresso ("Scanning folders… N files",
-"Comparing contents… N/M").
+Durante a varredura ela mostra o progresso ("Scanning folders… N folders,
+M files", "Comparing contents… N/M"). Em pastas muito grandes a varredura pode
+levar um tempo; **Refresh**, outras pastas ou fechar a aba interrompem a
+varredura em andamento. Links simbólicos e junções são seguidos, exceto quando
+levam de volta a uma pasta acima deles (um laço): esses ficam vazios. Ao final,
+a barra de status avisa quantas pastas não puderam ser lidas (sem permissão,
+por exemplo) e quantos laços foram ignorados.
 
 ### Filtros de exibição
 
@@ -277,7 +282,7 @@ Uma **seção** é um bloco contínuo de linhas diferentes.
 | Botão | Efeito |
 |---|---|
 | **✱ All** | mostra todas as linhas |
-| **≠ Diffs** | só as linhas diferentes |
+| **≠ Diffs** | só as linhas diferentes, com até 5 linhas iguais de contexto antes e depois de cada trecho; uma linha tracejada marca onde há linhas ocultas (passe o mouse para ver quantas) |
 | **= Same** | só as linhas iguais |
 | **≈ Minor** | trata diferenças sem importância como iguais (**View → Ignore Unimportant Differences**) |
 | **¶** | mostra espaços (·) e tabulações (→) (**View → Visible Whitespace**) |

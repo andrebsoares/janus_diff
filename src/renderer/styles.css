@@ -165,6 +165,8 @@ button { font: inherit; color: inherit; }
 .row.diff.orphan .tx { color: var(--diff-fg); }
 .row.insig { background: var(--insig-bg); }
 .row.gap .tx { background: repeating-linear-gradient(135deg, var(--gap-bg) 0 4px, #f8f8f8 4px 8px); }
+.row.hunk { position: relative; }
+.row.hunk::before { content: ''; position: absolute; z-index: 1; left: 0; right: 0; top: 0; border-top: 2px dashed #9a9a9a; pointer-events: none; }
 .row.sel .tx { box-shadow: inset 0 0 0 100px rgba(60, 120, 210, 0.22); }
 .row.cur .tx { outline: 1px solid #000; outline-offset: -1px; }
 .row.cur-other .tx { outline: 1px dotted #777; outline-offset: -1px; }
