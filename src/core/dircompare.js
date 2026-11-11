@@ -19,7 +19,30 @@ const DEFAULT_CRITERIA = Object.freeze({
 });
 
 const CONTENT_CONCURRENCY = 8;
+const FS_CONCURRENCY = 64;
+const PROGRESS_MS = 150;
 const CHUNK = 1 << 16;
+
+class Cancelled extends Error {
+  constructor() { super('Comparison cancelled'); this.cancelled = true; }
+}
+
+// Runs at most n of the queued async functions at a time, so a huge tree
+// does not flood the file system with every readdir/stat at once; queued
+// calls reject once signal.cancelled is set.
+function limiter(n, signal) {
+  let active = 0, head = 0, queue = [];
+  const pump = () => {
+    while (active < n && head < queue.length) {
+      const job = queue[head++];
+      if (head > 4096) { queue = queue.slice(head); head = 0; }
+      if (signal && signal.cancelled) { job.reject(new Cancelled()); continue; }
+      active++;
+      job.fn().then(job.resolve, job.reject).finally(() => { active--; pump(); });
+    }
+  };
+  return (fn) => new Promise((resolve, reject) => { queue.push({ fn, resolve, reject }); pump(); });
+}
 
 function globToRegExp(glob) {
   const body = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
@@ -59,27 +82,33 @@ function passesFilter(f, name, isDir, rel) {
   return inc.length === 0 || inc.some(hit);
 }
 
-async function listDir(dir, rel, filters, caseSensitive) {
+// ctx.run is the limiter; ctx.unreadable counts folders that could not be listed.
+async function listDir(dir, rel, filters, caseSensitive, ctx) {
   const out = new Map();
   if (!dir) return out;
   let entries;
   try {
-    entries = await fs.promises.readdir(dir);
-  } catch {
+    entries = await ctx.run(() => fs.promises.readdir(dir, { withFileTypes: true }));
+  } catch (err) {
+    if (err instanceof Cancelled) throw err;
+    ctx.unreadable++;
     return out;
   }
-  await Promise.all(entries.map(async (name) => {
+  await Promise.all(entries.map(async (ent) => {
+    const name = ent.name;
     let st;
     try {
-      st = await fs.promises.stat(path.join(dir, name));
-    } catch {
+      st = await ctx.run(() => fs.promises.stat(path.join(dir, name)));
+    } catch (err) {
+      if (err instanceof Cancelled) throw err;
       return;
     }
     const isDir = st.isDirectory();
     if (!passesFilter(filters, name, isDir, rel ? rel + '/' + name : name)) return;
     let key = caseSensitive ? name : name.toLowerCase();
     if (out.has(key)) key = name;
-    out.set(key, { name, isDir, size: isDir ? 0 : st.size, mtime: st.mtimeMs });
+    // link: a symbolic link or junction, resolved before descending into it.
+    out.set(key, { name, isDir, size: isDir ? 0 : st.size, mtime: st.mtimeMs, link: ent.isSymbolicLink() });
   }));
   return out;
 }
@@ -210,22 +239,50 @@ function aggregate(node) {
   return flags;
 }
 
-async function compareFolders(leftRoot, rightRoot, criteria, onProgress) {
+// signal, when given, is an object whose `cancelled` flag stops the scan; the
+// promise then rejects with an error whose `cancelled` is true.
+async function compareFolders(leftRoot, rightRoot, criteria, onProgress, signal) {
   const c = Object.assign({}, DEFAULT_CRITERIA, criteria);
   c.rules = Object.assign({}, TextDiff.DEFAULT_RULES, c.rules);
   const filters = parseFilters(c.filters);
   const pending = [];
-  let scanned = 0;
+  const ctx = { run: limiter(FS_CONCURRENCY, signal), unreadable: 0 };
+  let scanned = 0, folders = 0, loops = 0, lastReport = 0;
+  const report = (p) => {
+    const now = Date.now();
+    if (!onProgress || now - lastReport < PROGRESS_MS) return;
+    lastReport = now;
+    onProgress(p());
+  };
+  const sameReal = process.platform === 'win32' || process.platform === 'darwin'
+    ? (a, b) => a.toLowerCase() === b.toLowerCase() : (a, b) => a === b;
+  const realpath = async (p) => {
+    try {
+      return await fs.promises.realpath(p);
+    } catch {
+      return path.resolve(p);
+    }
+  };
+  // Real path of the folder p listed as entry: a link is resolved, anything
+  // else is its parent's real path plus its name.
+  const realOf = (p, parentReal, entry) => {
+    if (!p) return null;
+    return entry.link || !parentReal ? realpath(p) : path.join(parentReal, entry.name);
+  };
 
   // lrel / rrel are each side's own relative path (names can differ in case);
-  // for a missing side they give where a copy would land.
-  async function walk(leftDir, rightDir, rel, lrel, rrel) {
+  // for a missing side they give where a copy would land. lchain / rchain are
+  // the real paths of the folders above, so a link leading back into one of
+  // them is not followed forever.
+  async function walk(leftDir, rightDir, rel, lrel, rrel, lchain, rchain) {
+    folders++;
+    report(() => ({ scanned, folders }));
     const [lm, rm] = await Promise.all([
-      listDir(leftDir, rel, filters, c.filenameCase),
-      listDir(rightDir, rel, filters, c.filenameCase),
+      listDir(leftDir, rel, filters, c.filenameCase, ctx),
+      listDir(rightDir, rel, filters, c.filenameCase, ctx),
     ]);
     const keys = [...new Set([...lm.keys(), ...rm.keys()])];
-    const nodes = [];
+    const nodes = [], entries = new Map();
     for (const key of keys) {
       let l = lm.get(key) || null, r = rm.get(key) || null;
       // A file on one side and a folder on the other never match.
@@ -243,6 +300,7 @@ async function compareFolders(leftRoot, rightRoot, criteria, onProgress) {
           status: 'same',
         };
         nodes.push(node);
+        entries.set(node, [nl, nr]);
       }
     }
     nodes.sort((x, y) => (y.isDir - x.isDir) || x.name.localeCompare(y.name, undefined, { sensitivity: 'base' }) || (x.name < y.name ? -1 : 1));
@@ -250,11 +308,20 @@ async function compareFolders(leftRoot, rightRoot, criteria, onProgress) {
       const lp = node.left && path.join(leftDir, node.left.name);
       const rp = node.right && path.join(rightDir, node.right.name);
       if (node.isDir) {
-        node.children = await walk(lp, rp, node.rel, node.lrel, node.rrel);
+        const [nl, nr] = entries.get(node);
+        const [lreal, rreal] = await Promise.all([realOf(lp, lchain[lchain.length - 1], nl), realOf(rp, rchain[rchain.length - 1], nr)]);
+        if ((lreal && lchain.some((a) => sameReal(a, lreal))) || (rreal && rchain.some((a) => sameReal(a, rreal)))) {
+          loops++;
+          node.loop = true;
+          node.children = [];
+          return;
+        }
+        node.children = await walk(lp, rp, node.rel, node.lrel, node.rrel,
+          lreal ? lchain.concat(lreal) : lchain, rreal ? rchain.concat(rreal) : rchain);
         return;
       }
       scanned++;
-      if (onProgress && scanned % 500 === 0) onProgress({ scanned });
+      report(() => ({ scanned, folders }));
       if (!node.left) { node.status = 'orphanRight'; return; }
       if (!node.right) { node.status = 'orphanLeft'; return; }
       const quick = quickSame(node.left, node.right, c);
@@ -267,21 +334,23 @@ async function compareFolders(leftRoot, rightRoot, criteria, onProgress) {
     return nodes;
   }
 
-  const children = await walk(leftRoot, rightRoot, '', [], []);
+  const [lroot, rroot] = await Promise.all([leftRoot && realpath(leftRoot), rightRoot && realpath(rightRoot)]);
+  const children = await walk(leftRoot, rightRoot, '', [], [], lroot ? [lroot] : [], rroot ? [rroot] : []);
   await compareContents(pending, c, (compared) => {
-    if (onProgress && compared % 100 === 0) onProgress({ scanned, compared, toCompare: pending.length });
-  });
+    report(() => ({ scanned, compared, toCompare: pending.length }));
+  }, signal);
   const root = { name: '', rel: '', isDir: true, left: {}, right: {}, children };
   aggregate(root);
-  return { children, flags: root.flags, fileCount: scanned };
+  return { children, flags: root.flags, fileCount: scanned, unreadable: ctx.unreadable, loops };
 }
 
 // Compares the contents of the jobs' files a few at a time and classifies
 // their nodes; onDone receives how many were started so far.
-async function compareContents(jobs, c, onDone) {
+async function compareContents(jobs, c, onDone, signal) {
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(CONTENT_CONCURRENCY, jobs.length) }, async () => {
     while (next < jobs.length) {
+      if (signal && signal.cancelled) throw new Cancelled();
       const job = jobs[next++];
       let same;
       try {

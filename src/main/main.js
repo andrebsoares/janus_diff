@@ -355,7 +355,22 @@ function registerIpc() {
   const progress = (p) => {
     if (win && !win.isDestroyed()) win.webContents.send('dir:progress', p);
   };
-  handle('dir:compare', (left, right, criteria) => Dir.compareFolders(left, right, criteria, progress));
+  // Running folder scans by the id the renderer gave them, so one that was
+  // superseded (Refresh, other folders) or whose tab was closed can stop.
+  const scans = new Map();
+  handle('dir:compare', async (left, right, criteria, id) => {
+    const signal = { cancelled: false };
+    scans.set(id, signal);
+    try {
+      return await Dir.compareFolders(left, right, criteria, progress, signal);
+    } finally {
+      if (scans.get(id) === signal) scans.delete(id);
+    }
+  });
+  handle('dir:cancel', (id) => {
+    const signal = scans.get(id);
+    if (signal) signal.cancelled = true;
+  });
   handle('dir:recheck', (children, left, right, rels, criteria) => Dir.recheckContents(children, left, right, rels, criteria, progress));
 
   handle('ops:copy', (items) => runOps(items, async ({ from, to }) => {

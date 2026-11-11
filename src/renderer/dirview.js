@@ -120,7 +120,13 @@ class DirView {
   }
 
   onClose() {
+    this.cancelScan();
     return true;
+  }
+
+  cancelScan() {
+    if (this.scanId) api.cancelCompare(this.scanId);
+    this.scanId = 0;
   }
 
   session() {
@@ -148,6 +154,8 @@ class DirView {
     this.app.updateTabs();
     if (!this.roots.left && !this.roots.right) { this.setTree([]); return; }
     const token = this.scanToken = (this.scanToken || 0) + 1;
+    this.cancelScan();
+    const scanId = this.scanId = DirView.nextScanId = (DirView.nextScanId || 0) + 1;
     this.message = 'Scanning folders…';
     this.renderStatus();
     try {
@@ -156,9 +164,13 @@ class DirView {
         const st = await api.stat(this.roots[side]);
         if (!st.exists || !st.isDir) throw new Error(`${this.roots[side]} is not a folder`);
       }
-      const res = await api.compareFolders(this.roots.left, this.roots.right, this.criteria);
+      const res = await api.compareFolders(this.roots.left, this.roots.right, this.criteria, scanId);
       if (token !== this.scanToken) return;
-      this.message = '';
+      this.scanId = 0;
+      const notes = [];
+      if (res.unreadable) notes.push(`${res.unreadable} folder(s) could not be read`);
+      if (res.loops) notes.push(`${res.loops} linked folder(s) leading back into the tree were not followed`);
+      this.message = notes.join('; ');
       this.setTree(res.children);
       if (this.roots.left && this.roots.right) api.rememberSession(this.session());
     } catch (err) {
@@ -170,7 +182,8 @@ class DirView {
 
   onProgress(p) {
     if (!this.message.startsWith('Scanning') && !this.message.startsWith('Comparing')) return;
-    this.message = p.toCompare ? `Comparing contents… ${p.compared}/${p.toCompare}` : `Scanning folders… ${p.scanned} files`;
+    this.message = p.toCompare ? `Comparing contents… ${p.compared}/${p.toCompare}`
+      : p.folders ? `Scanning folders… ${p.folders} folders, ${p.scanned} files` : `Scanning folders… ${p.scanned} files`;
     this.renderStatus();
   }
 
@@ -210,6 +223,8 @@ class DirView {
         const at = flat.length;
         flat.push({ node, depth });
         const open = this.expanded.has(node.rel);
+        // Showing everything, a closed folder's contents don't matter.
+        if (!open && this.filter === 'all') { any = true; continue; }
         const mark = flat.length;
         const childAny = visit(node.children, depth + 1);
         if (!open) flat.length = mark;
