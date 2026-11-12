@@ -21,6 +21,8 @@ Ao abrir o programa sem argumentos aparece a tela inicial, com:
 - **Recent sessions**: as últimas 30 comparações feitas (tipo, caminhos da
   esquerda e da direita e data). Clique numa delas para reabri-la. Uma sessão
   só entra na lista quando os dois lados foram preenchidos.
+- **Update**: aparece só quando há uma versão nova disponível (veja
+  [Atualizar o Janus Diff](#atualizar-o-janus-diff)).
 
 ### Escolhendo o que comparar
 
@@ -71,6 +73,35 @@ Os menus se adaptam à aba ativa: comandos que não se aplicam a ela (por exempl
 A **barra de status**, no rodapé, mostra contagens de diferenças, a posição
 atual e mensagens explicando por que um comando não fez nada (por exemplo,
 "Nothing to copy…").
+
+### Atualizar o Janus Diff
+
+Alguns segundos depois de abrir, o Janus Diff consulta em segundo plano a última
+versão publicada no GitHub. Se houver uma mais nova, a tela inicial mostra o
+quadro **Update** com o número da versão; nada mais é exibido, nem quando não há
+novidade ou a consulta falha (por exemplo, sem internet). Quando o programa é
+aberto pelo Git com `--wait`, essa consulta automática não é feita.
+
+Para consultar a qualquer momento, use **Help → Check for Updates...**. Se houver
+versão nova, uma janela mostra as novidades da versão e os botões:
+
+- **Update Now**: baixa a nova versão, mostrando o progresso (**Cancel**
+  interrompe o download). O arquivo baixado é conferido com o checksum
+  SHA-256 publicado no GitHub antes de ser usado. Terminado o download, o
+  Janus Diff pede confirmação, dá a cada aba com alterações não salvas a
+  chance de salvar, fecha e:
+  - **instalado** (pelo `Janus.Diff.Setup.X.Y.Z.exe`): roda o instalador
+    novo sem janelas, na mesma pasta e no mesmo modo da instalação atual, e
+    abre o programa de novo ao terminar. Se ele foi instalado para todos os
+    usuários, o Windows pede permissão de administrador;
+  - **portátil** (`Janus.Diff.X.Y.Z.exe`): salva o executável novo ao lado
+    do atual (ou em **Downloads**, se essa pasta não aceitar gravação) e o
+    abre. O executável antigo continua lá e pode ser apagado.
+- **Release Page**: abre a página da versão no navegador.
+- **Later**: fecha a janela; o quadro **Update** continua na tela inicial.
+
+Rodando a partir do código-fonte, o programa não se atualiza sozinho: a janela
+oferece só a página da versão.
 
 ---
 

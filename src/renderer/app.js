@@ -6,6 +6,8 @@ const APP_KEYS = {
 };
 
 const DISK_CHECK_MS = 1500;
+// The automatic update check waits until startup is over.
+const UPDATE_CHECK_DELAY_MS = 5000;
 
 // Groups of [keys, description]; SHORTCUT_COLUMNS lays them out in the F1 dialog.
 const SHORTCUT_HELP = [
@@ -22,7 +24,7 @@ const SHORTCUT_COLUMNS = [['All views', 'Hex Compare'], ['Text Compare'], ['Fold
 // Small marker identifying a session type in tabs and on the home view.
 function typeGlyph(type) {
   if (type === 'dir') return h('span', { class: 'ico dir same' });
-  return { home: '⌂', text: '≡', hex: '01', help: '?' }[type] || '';
+  return { home: '⌂', text: '≡', hex: '01', help: '?', update: '⇧' }[type] || '';
 }
 
 class HomeView {
@@ -40,12 +42,18 @@ class HomeView {
         tile('Folder Compare', 'Compare two folder trees side by side and synchronize them', 'NewDir', 'dir'),
         tile('Text Compare', 'Compare and edit two text files line by line', 'NewText', 'text'),
         tile('Hex Compare', 'Compare two binary files byte by byte', 'NewHex', 'hex'),
+        this.updateSlot = h('div', {}),
         h('h2', { class: 'home-gap' }, 'Help'),
         tile('User Guide', 'How to use every feature of Janus Diff', 'Guide', 'help')),
       h('div', { class: 'home-col wide' }, h('h2', {}, 'Recent sessions'), this.list));
   }
 
   async onShow() {
+    const u = this.app.update;
+    this.updateSlot.replaceChildren(...(u ? [h('h2', { class: 'home-gap' }, 'Update'),
+      h('button', { class: 'home-tile update', onclick: () => Updates.offer(u) },
+        h('span', { class: 'home-glyph' }, typeGlyph('update')), h('span', { class: 'home-label' }, `Janus Diff ${u.version} is available`),
+        h('span', { class: 'home-desc' }, `You have version ${u.current}. Click to see what is new and update.`))] : []));
     const sessions = await api.loadSessions();
     const names = { dir: 'Folder Compare', text: 'Text Compare', hex: 'Hex Compare' };
     this.list.replaceChildren(...(sessions.length ? sessions.map((s) => h('button', { class: 'home-item', onclick: () => this.app.openSession(s, true) },
@@ -73,6 +81,7 @@ const App = {
     api.onCommand((c) => { if (!Modal.open) this.command(c); });
     api.onOpen((paths) => this.openPaths(paths));
     api.onDirProgress((p) => { if (this.active && this.active.onProgress) this.active.onProgress(p); });
+    api.onUpdateProgress((p) => Updates.onProgress(p));
     // Files changed by other programs are picked up on focus and while visible.
     const checkDisk = () => { if (!Modal.open && !document.hidden && this.active && this.active.checkDisk) this.active.checkDisk(); };
     window.addEventListener('focus', checkDisk);
@@ -89,16 +98,30 @@ const App = {
       if (!opens.length) this.add(new HomeView(this));
       for (const paths of opens) await this.openPaths(paths);
     });
+    setTimeout(() => Updates.check(true), UPDATE_CHECK_DELAY_MS);
   },
 
   async closeAll() {
-    for (const tab of this.tabs.slice()) {
-      this.activate(tab);
-      if (!(await tab.onClose())) return;
-      if (tab.sides) tab.sides.left.dirty = tab.sides.right.dirty = false;
-    }
+    if (!(await this.confirmQuit())) return;
     this.quitting = true;
     window.close();
+  },
+
+  // Gives each tab the chance to save or keep its changes; false when one
+  // of them cancels.
+  async confirmQuit() {
+    for (const tab of this.tabs.slice()) {
+      this.activate(tab);
+      if (!(await tab.onClose())) return false;
+      if (tab.sides) tab.sides.left.dirty = tab.sides.right.dirty = false;
+    }
+    return true;
+  },
+
+  // Remembers an available update and shows it on the home tabs.
+  setUpdate(info) {
+    this.update = info && info.available ? info : null;
+    if (this.active && this.active.type === 'home') this.active.onShow();
   },
 
   async openPaths(paths) {
@@ -208,11 +231,111 @@ const App = {
         else this.openSession({ type: 'help' }, true);
         return;
       }
+      case 'CheckUpdates':
+        Updates.check(false);
+        return;
       case 'About':
         api.version().then((v) => Modal.message('About', `Janus Diff ${v}\n\nAn independent folder, text and hex comparison tool.`));
         return;
       default:
         if (this.active) this.active.command(c);
+    }
+  },
+};
+
+// The message of an error thrown by the main process, without Electron's
+// "Error invoking remote method" prefix.
+function remoteError(err) {
+  return String(err && err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+}
+
+// Update check, download and install (Help -> Check for Updates). The main
+// process keeps the release and the downloaded file; this is only the dialogs.
+const Updates = {
+  busy: false,
+  onProgress: () => {},
+
+  // quiet: the automatic check at startup, which only shows an available
+  // update on the home tab and says nothing otherwise.
+  async check(quiet) {
+    if (this.busy) return;
+    let info;
+    try {
+      info = await api.checkUpdate(quiet);
+    } catch (err) {
+      if (!quiet) Modal.message('Check for Updates', `Could not check for updates.\n\n${remoteError(err)}`);
+      return;
+    }
+    if (!info) return;
+    App.setUpdate(info);
+    if (quiet) return;
+    if (info.available) this.offer(info);
+    else Modal.message('Check for Updates', `Janus Diff ${info.current} is the latest version.`);
+  },
+
+  async offer(info) {
+    if (this.busy || Modal.open) return;
+    const notes = h('div', { class: 'update-notes' });
+    notes.innerHTML = Markdown.render(info.notes || 'No release notes.').html;
+    notes.addEventListener('click', (e) => {
+      const a = e.target.closest('a[href]');
+      if (!a) return;
+      e.preventDefault();
+      api.openUpdatePage(a.href);
+    });
+    const canInstall = info.kind !== 'none' && !!info.asset;
+    const size = canInstall && info.asset.size ? ` (${(info.asset.size / 1048576).toFixed(1)} MB)` : '';
+    const how = info.kind === 'none'
+      ? 'This copy cannot update itself (it runs from source or on another system); get the new version from the release page.'
+      : !info.asset ? 'This release has no file for this copy of Janus Diff; see the release page.'
+        : info.kind === 'installer' ? `Update Now downloads the installer${size}, closes Janus Diff, updates it and starts it again.`
+          : `Update Now downloads the new portable executable${size} next to the current one, closes Janus Diff and starts the new version. The old file can be deleted afterwards.`;
+    const body = h('div', { class: 'update-dlg' },
+      h('div', { class: 'dlg-text' }, `Version ${info.version} is available. You have version ${info.current}.`),
+      h('div', { class: 'dlg-heading' }, 'What is new'), notes,
+      h('div', { class: 'dlg-text update-how' }, how));
+    const buttons = [...(canInstall ? [['Update Now', 'install', true]] : []), ['Release Page', 'page', !canInstall], ['Later', null]];
+    const choice = await Modal.show('Update Available', body, buttons);
+    if (choice === 'page') api.openUpdatePage(info.page);
+    else if (choice === 'install') this.install(info);
+  },
+
+  async install(info) {
+    this.busy = true;
+    try {
+      const bar = h('div', { class: 'update-bar' });
+      const label = h('div', { class: 'dlg-text' }, 'Starting the download...');
+      const mb = (n) => (n / 1048576).toFixed(1);
+      this.onProgress = ({ received, total }) => {
+        if (total) bar.style.width = Math.min(100, (received / total) * 100) + '%';
+        label.textContent = total ? `Downloading: ${mb(received)} of ${mb(total)} MB` : `Downloading: ${mb(received)} MB`;
+      };
+      let result = null, error = null;
+      const dialog = Modal.show(`Downloading Janus Diff ${info.version}`,
+        h('div', { class: 'update-dlg' }, label, h('div', { class: 'update-track' }, bar)), [['Cancel', 'cancel']]);
+      const download = api.downloadUpdate().then((r) => { result = r; }, (err) => { error = err; }).then(() => Modal.close('done'));
+      if ((await dialog) !== 'done') {
+        api.cancelUpdate();
+        await download;
+        return;
+      }
+      if (error) {
+        Modal.message('Update', `The update could not be downloaded.\n\n${remoteError(error)}`);
+        return;
+      }
+      const where = result.kind === 'portable' ? `\n\nThe new version was saved as:\n${result.file}` : '';
+      if (!(await Modal.confirm('Update', `Janus Diff ${info.version} is ready. Janus Diff will close now to update.${where}`, 'Update Now'))) return;
+      if (!(await App.confirmQuit())) return;
+      App.quitting = true;
+      try {
+        await api.installUpdate();
+      } catch (err) {
+        App.quitting = false;
+        Modal.message('Update', `The update could not be started.\n\n${remoteError(err)}`);
+      }
+    } finally {
+      this.onProgress = () => {};
+      this.busy = false;
     }
   },
 };

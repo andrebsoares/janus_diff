@@ -317,6 +317,8 @@ button { font: inherit; color: inherit; }
 .home-paths { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-time, .home-empty { color: #777; }
 .homeview h2.home-gap { margin-top: 14px; }
+.home-tile.update { border-color: #6aa86a; background: #eef8ee; }
+.home-tile.update .home-glyph { color: #2e7d32; }
 
 /* ---- user guide ---- */
 
@@ -358,6 +360,15 @@ button { font: inherit; color: inherit; }
 .dlg-check { display: flex; align-items: center; gap: 6px; }
 .dlg-input { padding: 3px 5px; border: 1px solid var(--border); background: var(--paper); font: inherit; user-select: text; }
 .dlg-heading { margin-top: 6px; padding-bottom: 2px; border-bottom: 1px solid #c0c0c0; font-weight: 600; color: #204a7a; }
+.update-dlg { display: flex; flex-direction: column; gap: 8px; width: 520px; max-width: 100%; }
+.update-notes { max-height: 260px; overflow: auto; padding: 4px 10px; border: 1px solid #d0d0d0; background: var(--paper); line-height: 1.45; user-select: text; }
+.update-notes h1, .update-notes h2, .update-notes h3 { margin: 8px 0 4px; font-size: 13px; color: #204a7a; }
+.update-notes ul { margin: 4px 0; padding-left: 20px; }
+.update-notes a { color: var(--accent); }
+.update-notes code { font-family: var(--mono); font-size: 12px; background: #f3f3f3; }
+.update-how { color: #444; }
+.update-track { height: 10px; border: 1px solid #a0a0a0; background: var(--paper); }
+.update-bar { width: 0; height: 100%; background: var(--accent); transition: width 0.15s; }
 
 .legend { display: grid; gap: 5px; padding: 8px 10px; background: var(--paper); border: 1px solid #c4c4c4; }
 .legend-row { display: flex; align-items: center; gap: 8px; }
