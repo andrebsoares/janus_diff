@@ -178,6 +178,7 @@ use `git jd --ours` ou `git jd --theirs`.
 <app> --compare-selected <c>   junta os itens de uma seleção múltipla do Explorer
 <app> --git-external <args>    recebe os argumentos do diff.external (usado pelo git jd)
 <app> --register-shell | --unregister-shell | --git-setup
+<app> --version                mostra a versão e sai
 ```
 
 ## Desenvolvimento

@@ -566,6 +566,7 @@ JanusDiff --register-shell           instala o menu de contexto do Explorer
 JanusDiff --unregister-shell         remove o menu de contexto
 JanusDiff --git-setup                configura o Git difftool e o alias git jd
 JanusDiff --git-external <args>      recebe os argumentos do diff.external do Git (usado pelo git jd)
+JanusDiff --version                  mostra a versão e sai
 ```
 
 Sem `--wait`, se o programa já estiver aberto a comparação vira uma nova aba na

@@ -4,7 +4,11 @@
 const crypto = require('crypto');
 const fs = require('fs');
 
-// Where releases are published; the same setting electron-builder uses.
+// Where releases are published. A copy of build.publish in package.json (a
+// test keeps them equal): electron-builder strips the "build" field from the
+// package.json it packages, so the app cannot read it at run time.
+const PUBLISH = { provider: 'github', owner: 'andrebsoares', repo: 'janus_diff' };
+
 function releaseApiUrl(publish) {
   return `https://api.github.com/repos/${publish.owner}/${publish.repo}/releases/latest`;
 }
@@ -112,4 +116,4 @@ async function download(fetch, asset, dest, onProgress, signal) {
   return dest;
 }
 
-module.exports = { releaseApiUrl, parseVersion, compareVersions, installKind, pickAsset, updateInfo, checkLatest, download };
+module.exports = { PUBLISH, releaseApiUrl, parseVersion, compareVersions, installKind, pickAsset, updateInfo, checkLatest, download };
