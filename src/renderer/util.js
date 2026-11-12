@@ -196,6 +196,8 @@ const ContextMenu = {
 
 const Modal = {
   open: false,
+  // Closes the open dialog as if the button with this value was chosen.
+  close: () => {},
 
   // buttons: [[label, value, isDefault]]; resolves with the chosen value, or
   // null when dismissed.
@@ -205,6 +207,7 @@ const Modal = {
       const done = (value) => {
         root.replaceChildren();
         Modal.open = false;
+        Modal.close = () => {};
         document.removeEventListener('keydown', onKey, true);
         resolve(value);
       };
@@ -217,6 +220,7 @@ const Modal = {
       const dlg = h('div', { class: 'dlg' }, h('div', { class: 'dlg-title' }, title), h('div', { class: 'dlg-body' }, body), h('div', { class: 'dlg-buttons' }, btns));
       root.replaceChildren(h('div', { class: 'dlg-backdrop' }, dlg));
       Modal.open = true;
+      Modal.close = done;
       document.addEventListener('keydown', onKey, true);
       const focus = dlg.querySelector('input, select') || btns[buttons.indexOf(def)];
       focus.focus();

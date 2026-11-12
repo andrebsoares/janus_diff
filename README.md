@@ -16,6 +16,10 @@ Baixe a versão mais recente em
   do Explorer.
 - `Janus.Diff.X.Y.Z.exe`: versão portátil, sem instalação.
 
+Depois de instalado, o próprio programa avisa na tela inicial quando sai uma
+versão nova e se atualiza por **Help → Check for Updates...** (instalador ou
+portátil, conforme a cópia em uso).
+
 Para rodar a partir do código-fonte, veja [Desenvolvimento](#desenvolvimento).
 
 ## Como usar

@@ -1,9 +1,12 @@
 'use strict';
-const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, net, shell } = require('electron');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const Dir = require('../core/dircompare');
 const Shell = require('./shellmenu');
+const Updater = require('./updater');
+const { build: { publish: PUBLISH } } = require('../../package.json');
 const { parseCli, appArgs } = require('./cli');
 
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
@@ -224,7 +227,7 @@ function buildMenu(view) {
     },
     {
       label: '&Help',
-      submenu: [item('User Guide', 'Guide'), item('Keyboard Shortcuts', 'Shortcuts', 'F1'), sep, item('About', 'About')],
+      submenu: [item('User Guide', 'Guide'), item('Keyboard Shortcuts', 'Shortcuts', 'F1'), sep, item('Check for Updates...', 'CheckUpdates'), item('About', 'About')],
     },
   ]);
 }
@@ -303,6 +306,66 @@ async function runOps(items, fn) {
   return { done: items.length - errors.length, errors, failed };
 }
 
+// Update state: the release found by the last check and the file
+// downloaded for it, so the renderer never hands over URLs or paths to run.
+const updates = { info: null, file: null, signal: null };
+
+function updateKind() {
+  return Updater.installKind({ packaged: app.isPackaged, platform: process.platform, env: process.env });
+}
+
+// Downloads the release file of the last check. The installer goes to the
+// temporary folder; the portable version next to the running executable (or
+// to Downloads when that folder is not writable), since it is the app itself.
+async function downloadUpdate() {
+  const { info } = updates;
+  if (!info || !info.available || !info.asset) throw new Error('There is no update to download.');
+  const signal = { cancelled: false };
+  updates.signal = signal;
+  const tmpDir = path.join(app.getPath('temp'), 'janus-diff-update');
+  const tmp = path.join(tmpDir, info.asset.name);
+  try {
+    await fs.promises.mkdir(tmpDir, { recursive: true });
+    await Updater.download(net.fetch, info.asset, tmp, (p) => {
+      if (win && !win.isDestroyed()) win.webContents.send('update:progress', p);
+    }, signal);
+  } finally {
+    updates.signal = null;
+  }
+  let file = tmp;
+  if (info.kind === 'portable') {
+    file = null;
+    for (const dir of [path.dirname(process.env.PORTABLE_EXECUTABLE_FILE), app.getPath('downloads')]) {
+      const dest = path.join(dir, info.asset.name);
+      try {
+        await fs.promises.copyFile(tmp, dest);
+        file = dest;
+        break;
+      } catch { /* try the next folder */ }
+    }
+    await fs.promises.rm(tmp, { force: true });
+    if (!file) throw new Error('The new version could not be saved next to the current one nor in Downloads.');
+  }
+  updates.file = file;
+  return { file, kind: info.kind, current: process.env.PORTABLE_EXECUTABLE_FILE || null };
+}
+
+// Starts the downloaded update and quits. The installer runs silently over
+// the current installation (--updated keeps the install folder and mode) and
+// starts the app again when done (--force-run); "start" goes through the
+// shell so Windows can ask for elevation when the app is installed for all
+// users. The portable version is simply started.
+function installUpdate() {
+  const { file, info } = updates;
+  if (!file || !info) throw new Error('Download the update first.');
+  const child = info.kind === 'installer'
+    ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"start "" "${file}" /S --updated --force-run"`],
+      { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true })
+    : spawn(file, [], { detached: true, stdio: 'ignore', cwd: path.dirname(file) });
+  child.unref();
+  setTimeout(() => app.quit(), 300);
+}
+
 function registerIpc() {
   const handle = (channel, fn) => ipcMain.handle(channel, (_e, ...args) => fn(...args));
 
@@ -314,6 +377,23 @@ function registerIpc() {
   });
   handle('app:version', () => app.getVersion());
   handle('app:guide', readGuide);
+
+  // quiet: the automatic check at startup, skipped where it makes no sense
+  // (running from source) or would run too often (git difftool's --wait).
+  handle('update:check', async (quiet) => {
+    if (quiet && (!app.isPackaged || cli.wait)) return null;
+    updates.info = await Updater.checkLatest(net.fetch, PUBLISH, app.getVersion(), updateKind());
+    updates.file = null;
+    return updates.info;
+  });
+  handle('update:download', downloadUpdate);
+  handle('update:cancel', () => {
+    if (updates.signal) updates.signal.cancelled = true;
+  });
+  handle('update:install', installUpdate);
+  handle('update:page', (url) => {
+    if (/^https:\/\/github\.com\//.test(url)) return shell.openExternal(url);
+  });
 
   let menuView = 'home';
   handle('menu:view', (view) => {
