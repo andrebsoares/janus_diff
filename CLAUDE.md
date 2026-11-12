@@ -39,8 +39,9 @@ npm install --no-save sharp && node tools/icon/build.js     # regenera icon.ico/
 
 ## Fluxo de desenvolvimento entre máquinas
 
-O desenvolvimento é feito por uma instância do Claude Code numa máquina Linux (acessada por SSH), que programa, testa e faz commit/push; a validação final acontece na máquina Windows do usuário (`git pull`, `npm install`, `npm test`, `npm start`, e `npm run dist:win` quando relevante). Consequências práticas:
+O desenvolvimento é feito por uma instância do Claude Code numa máquina Linux (acessada por SSH), que programa, testa, faz commit/push num branch e abre o PR; a validação final acontece na máquina Windows do usuário (`git pull`, `npm install`, `npm test`, `npm start`, e `npm run dist:win` quando relevante). Consequências práticas:
 
+- A `main` é protegida por um ruleset do GitHub: push direto e force push são recusados, toda mudança entra por PR e o merge só é liberado com o CI (`test (ubuntu-latest)` e `test (windows-latest)`) verde. Trabalhe num branch (`feat/…`, `fix/…`, `docs/…`) e abra o PR com `gh pr create`. Isso vale também para o commit de release (versão no `package.json`/`package-lock.json`); a tag `v*`, que dispara `release.yml`, é criada na `main` depois do merge e enviada normalmente, já que o ruleset não cobre tags.
 - No Linux, valide com `npm test` e, para mudanças de UI, com o teste de fumaça sob Xvfb/Docker. Não há como validar lá o menu de contexto do Explorer, o registro, os diálogos nativos do Windows nem o instalador — diga explicitamente no commit/relato o que ficou para validar no Windows.
 - Código de caminhos precisa funcionar com `\` e letras de unidade (vide o `path` do preload e a comparação case-insensitive em `ops:rename`); prefira cobrir com testes que rodem nas duas plataformas.
 - Mantenha `package-lock.json` versionado e coerente, já que o Windows reinstala a partir dele.
