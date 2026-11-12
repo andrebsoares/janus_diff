@@ -11,7 +11,7 @@
 // multiple items, so "Compare" also shows for one item and opens it alone.
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 
 const CLASSES = 'HKCU\\Software\\Classes';
 const TARGETS = { file: '*', dir: 'Directory' };
@@ -125,14 +125,19 @@ function takeLeft(stateFile, launcher, run) {
 // `git difftool` deletes its temporary files as soon as the tool exits, hence
 // --wait. Forward slashes survive git's shell quoting.
 //
+// git appends repository file names to these commands, and Chromium reads any
+// argument that starts with -- as one of its switches, wherever it is: a file
+// named `--gpu-launcher=<command>` at the root of a cloned repository would
+// run that command. The bare -- before git's arguments ends the switches.
+//
 // `git jd` is `git diff` with diff.external set for that one command: it opens
 // much faster than `git difftool`, whose helper script costs about two seconds
 // per file on Windows, and leaves plain `git diff` printing to the terminal.
 function gitSettings(launcher) {
   const cmd = [launcher.exe, ...launcher.args].map((s) => quote(s.replace(/\\/g, '/'))).join(' ');
-  const external = `${cmd} --git-external`.replace(/"/g, '\\"');
+  const external = `${cmd} --git-external --`.replace(/"/g, '\\"');
   return [
-    ['difftool.janusdiff.cmd', `${cmd} --wait "$LOCAL" "$REMOTE"`],
+    ['difftool.janusdiff.cmd', `${cmd} --wait -- "$LOCAL" "$REMOTE"`],
     ['diff.tool', 'janusdiff'],
     ['difftool.prompt', 'false'],
     ['alias.jd', `-c "diff.external=${external}" diff`],
@@ -143,4 +148,44 @@ function gitSetup(launcher, run = (args) => execFileSync('git', args, { stdio: '
   for (const [key, value] of gitSettings(launcher)) run(['config', '--global', key, value]);
 }
 
-module.exports = { plan, removalPlan, apply, allKeys, selectLeft, takeLeft, loadLeft, gitSettings, gitSetup, compareLabel };
+// Up to 0.4.3 the git commands had no -- before git's arguments. fixGitSetting
+// returns the old value with the -- added, or null for anything else: other
+// tools, values the user edited, values already fixed. The executable path in
+// the value is kept, so a setting that points at another copy stays there.
+const GIT_FIXES = {
+  'difftool.janusdiff.cmd': [' --wait "$LOCAL" "$REMOTE"', ' --wait -- "$LOCAL" "$REMOTE"'],
+  'alias.jd': [' --git-external" diff', ' --git-external --" diff'],
+};
+
+function fixGitSetting(key, value) {
+  const [old, fixed] = GIT_FIXES[key] || [];
+  return old && value.endsWith(old) ? value.slice(0, -old.length) + fixed : null;
+}
+
+function gitRun(args) {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, { windowsHide: true }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+  });
+}
+
+// Rewrites the global git settings left by an older version. Returns the keys
+// it changed. A key that is not set (git exits with 1), or git missing, is
+// skipped; a failed write rejects.
+async function gitMigrate(run = gitRun) {
+  const changed = [];
+  for (const key of Object.keys(GIT_FIXES)) {
+    let value;
+    try {
+      value = String(await run(['config', '--global', '--get', key])).replace(/\r?\n$/, '');
+    } catch {
+      continue;
+    }
+    const fixed = fixGitSetting(key, value);
+    if (fixed === null) continue;
+    await run(['config', '--global', key, fixed]);
+    changed.push(key);
+  }
+  return changed;
+}
+
+module.exports = { plan, removalPlan, apply, allKeys, selectLeft, takeLeft, loadLeft, gitSettings, gitSetup, gitMigrate, fixGitSetting, compareLabel };

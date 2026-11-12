@@ -168,6 +168,12 @@ aceita os mesmos argumentos (`git jd --cached`, `git jd HEAD~1 HEAD`). O
 Num conflito de merge, o Git não chama ferramentas externas para o diff combinado;
 use `git jd --ours` ou `git jd --theirs`.
 
+Os comandos gravados põem `--` antes dos nomes de arquivo que o Git repassa: sem
+ele, um arquivo de repositório chamado, por exemplo, `--gpu-launcher=<comando>`
+seria lido pelo Chromium como opção e executaria o comando. Configurações gravadas
+por versões anteriores, sem o `--`, são corrigidas na primeira vez que o app abre
+(preservando o caminho do executável).
+
 ## Linha de comando
 
 ```

@@ -17,11 +17,14 @@ function externalDiffPaths(args, cwd) {
 
 // args: the arguments after the executable (and after the app path in
 // development). Unknown switches belong to Electron/Chromium and are skipped.
+// A bare -- ends the switches: what follows is only paths, even ones that
+// start with a dash. Chromium stops reading its own switches there too, which
+// is why the git commands put it before the file names git appends.
 //   <left> [<right>]        open a comparison
 //   --wait                  own process that lives until its window closes
 //                           (what `git difftool` needs)
-//   --git-external <args>   the rest are git's diff.external arguments; implies
-//                           --wait (what the `git jd` alias uses)
+//   --git-external [--] <args>  the rest are git's diff.external arguments;
+//                           implies --wait (what the `git jd` alias uses)
 //   --select-left <path>    remember the left side (Explorer context menu)
 //   --compare-to <path>     compare the remembered left side with this path
 //   --compare-selected <p>  one item of an Explorer multi-selection; the items
@@ -40,7 +43,11 @@ function parseCli(args, cwd) {
       out.wait = true;
     } else if (a === '--git-external') {
       out.wait = true;
-      out.paths = externalDiffPaths(args.slice(i + 1), cwd);
+      const rest = args.slice(i + 1);
+      out.paths = externalDiffPaths(rest[0] === '--' ? rest.slice(1) : rest, cwd);
+      break;
+    } else if (a === '--') {
+      for (const p of args.slice(i + 1, i + 1 + 2 - out.paths.length)) out.paths.push(path.resolve(cwd, p));
       break;
     } else if (!a.startsWith('-') && out.paths.length < 2) {
       out.paths.push(path.resolve(cwd, a));
