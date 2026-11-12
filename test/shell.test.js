@@ -73,14 +73,14 @@ test('development launcher includes the app path', () => {
 
 test('git settings wait for the window and use forward slashes', () => {
   assert.deepStrictEqual(Shell.gitSettings(launcher)[0],
-    ['difftool.janusdiff.cmd', '"C:/Apps/Janus Diff.exe" --wait "$LOCAL" "$REMOTE"']);
+    ['difftool.janusdiff.cmd', '"C:/Apps/Janus Diff.exe" --wait -- "$LOCAL" "$REMOTE"']);
 });
 
 test('the git jd alias sets diff.external for that command only', () => {
   const alias = (l) => new Map(Shell.gitSettings(l)).get('alias.jd');
-  assert.strictEqual(alias(launcher), '-c "diff.external=\\"C:/Apps/Janus Diff.exe\\" --git-external" diff');
+  assert.strictEqual(alias(launcher), '-c "diff.external=\\"C:/Apps/Janus Diff.exe\\" --git-external --" diff');
   assert.strictEqual(alias({ exe: 'C:\\e\\electron.exe', args: ['C:\\src\\app'] }),
-    '-c "diff.external=\\"C:/e/electron.exe\\" \\"C:/src/app\\" --git-external" diff');
+    '-c "diff.external=\\"C:/e/electron.exe\\" \\"C:/src/app\\" --git-external --" diff');
   assert.ok(!Shell.gitSettings(launcher).some(([key]) => key === 'diff.external'));
 });
 
@@ -99,6 +99,21 @@ test('git external diff arguments', () => {
   const renamed = parse('old.txt', temp, hex, '100644', 'new.txt', hex, '100644', 'new.txt', 'similarity index 100%\nrename from old.txt\n');
   assert.deepStrictEqual(renamed.paths, [temp, path.join(cwd, 'new.txt')]);
   assert.deepStrictEqual(parse('conflict.txt').paths, [path.join(cwd, 'conflict.txt'), '']);
+  // The -- that the git jd alias puts before git's arguments, and a file name
+  // that looks like a Chromium switch after it.
+  const dashed = '--gpu-launcher=calc';
+  assert.deepStrictEqual(parse('--', dashed, temp, hex, '100644', dashed, '0'.repeat(40), '100644').paths,
+    [temp, path.join(cwd, dashed)]);
+  assert.deepStrictEqual(parse('--', 'conflict.txt').paths, [path.join(cwd, 'conflict.txt'), '']);
+});
+
+test('a bare -- ends the switches', () => {
+  const cwd = path.resolve('/work');
+  const out = parseCli(['--wait', '--', '--gpu-launcher=calc', '-b.txt', 'c.txt'], cwd);
+  assert.deepStrictEqual(out, { mode: 'open', paths: [path.join(cwd, '--gpu-launcher=calc'), path.join(cwd, '-b.txt')], wait: true, target: null });
+  assert.deepStrictEqual(parseCli(['a.txt', '--', '--version'], cwd),
+    { mode: 'open', paths: [path.join(cwd, 'a.txt'), path.join(cwd, '--version')], wait: false, target: null });
+  assert.deepStrictEqual(appArgs(['C:\\e\\electron.exe', 'C:\\src\\app', '--wait', '--', '--x', 'b'], false), ['--wait', '--', '--x', 'b']);
 });
 
 test('command line parsing', () => {

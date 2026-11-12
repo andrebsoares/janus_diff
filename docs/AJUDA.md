@@ -553,6 +553,11 @@ Durante um conflito de merge, `git jd` sozinho mostra o diff combinado no termin
 porque o Git não chama ferramentas externas nesse caso. Use `git jd --ours` ou
 `git jd --theirs` para abrir o arquivo no Janus Diff.
 
+Se você configurou a integração numa versão anterior, use **Configure as Git Diff
+Tool** de novo: a configuração atual põe `--` antes dos nomes de arquivo que o Git
+repassa, para que um arquivo de repositório com nome começado por `--` não seja
+lido como opção do programa.
+
 ---
 
 ## 7. Linha de comando
@@ -571,6 +576,7 @@ JanusDiff --version                  mostra a versão e sai
 
 Sem `--wait`, se o programa já estiver aberto a comparação vira uma nova aba na
 janela existente. Caminhos relativos são resolvidos a partir da pasta atual.
+Depois de um `--` sozinho, tudo é tratado como caminho, mesmo começando com `-`.
 
 ---
 

@@ -125,14 +125,19 @@ function takeLeft(stateFile, launcher, run) {
 // `git difftool` deletes its temporary files as soon as the tool exits, hence
 // --wait. Forward slashes survive git's shell quoting.
 //
+// git appends repository file names to these commands, and Chromium reads any
+// argument that starts with -- as one of its switches, wherever it is: a file
+// named `--gpu-launcher=<command>` at the root of a cloned repository would
+// run that command. The bare -- before git's arguments ends the switches.
+//
 // `git jd` is `git diff` with diff.external set for that one command: it opens
 // much faster than `git difftool`, whose helper script costs about two seconds
 // per file on Windows, and leaves plain `git diff` printing to the terminal.
 function gitSettings(launcher) {
   const cmd = [launcher.exe, ...launcher.args].map((s) => quote(s.replace(/\\/g, '/'))).join(' ');
-  const external = `${cmd} --git-external`.replace(/"/g, '\\"');
+  const external = `${cmd} --git-external --`.replace(/"/g, '\\"');
   return [
-    ['difftool.janusdiff.cmd', `${cmd} --wait "$LOCAL" "$REMOTE"`],
+    ['difftool.janusdiff.cmd', `${cmd} --wait -- "$LOCAL" "$REMOTE"`],
     ['diff.tool', 'janusdiff'],
     ['difftool.prompt', 'false'],
     ['alias.jd', `-c "diff.external=${external}" diff`],
