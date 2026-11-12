@@ -144,3 +144,46 @@ test('app arguments skip the app path wherever the switches put it', () => {
   const cli = parseCli(appArgs([exe, '--inspect=0', '.', 'left', 'right'], false), path.resolve('/work'));
   assert.deepStrictEqual(cli.paths, [path.resolve('/work/left'), path.resolve('/work/right')]);
 });
+
+test('git settings from older versions get the --', async () => {
+  const dev = { exe: 'C:\e\electron.exe', args: ['C:\src\app'] };
+  const old = (l) => new Map(Shell.gitSettings(l).map(([k, v]) => [k, v.replace(' -- "$LOCAL"', ' "$LOCAL"').replace(' --git-external --"', ' --git-external"')]));
+  for (const l of [launcher, dev]) {
+    const before = old(l);
+    const after = new Map(Shell.gitSettings(l));
+    for (const key of ['difftool.janusdiff.cmd', 'alias.jd']) {
+      assert.notStrictEqual(before.get(key), after.get(key));
+      assert.strictEqual(Shell.fixGitSetting(key, before.get(key)), after.get(key));
+      // Already fixed: left alone.
+      assert.strictEqual(Shell.fixGitSetting(key, after.get(key)), null);
+    }
+  }
+  // Another copy's path is kept; other tools and other keys are left alone.
+  assert.strictEqual(Shell.fixGitSetting('difftool.janusdiff.cmd', '"D:/Other/Janus Diff.exe" --wait "$LOCAL" "$REMOTE"'),
+    '"D:/Other/Janus Diff.exe" --wait -- "$LOCAL" "$REMOTE"');
+  assert.strictEqual(Shell.fixGitSetting('alias.jd', '!git log'), null);
+  assert.strictEqual(Shell.fixGitSetting('diff.tool', 'janusdiff'), null);
+
+  // A fake git: config --global --get exits with 1 for unset keys.
+  const fakeGit = (config) => {
+    const calls = [];
+    const run = async (args) => {
+      calls.push(args);
+      if (args[2] === '--get') {
+        if (!config.has(args[3])) throw new Error('exit 1');
+        return config.get(args[3]) + '\n';
+      }
+      config.set(args[2], args[3]);
+      return '';
+    };
+    return { run, calls };
+  };
+  const config = old(launcher);
+  const git = fakeGit(config);
+  assert.deepStrictEqual(await Shell.gitMigrate(git.run), ['difftool.janusdiff.cmd', 'alias.jd']);
+  assert.deepStrictEqual(config, new Map(Shell.gitSettings(launcher)));
+  assert.deepStrictEqual(await Shell.gitMigrate(git.run), []);
+  const empty = fakeGit(new Map());
+  assert.deepStrictEqual(await Shell.gitMigrate(empty.run), []);
+  assert.ok(empty.calls.every((args) => args[2] === '--get'));
+});

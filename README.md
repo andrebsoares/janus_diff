@@ -170,8 +170,9 @@ use `git jd --ours` ou `git jd --theirs`.
 
 Os comandos gravados põem `--` antes dos nomes de arquivo que o Git repassa: sem
 ele, um arquivo de repositório chamado, por exemplo, `--gpu-launcher=<comando>`
-seria lido pelo Chromium como opção e executaria o comando. Quem configurou numa
-versão anterior deve rodar `--git-setup` de novo.
+seria lido pelo Chromium como opção e executaria o comando. Configurações gravadas
+por versões anteriores, sem o `--`, são corrigidas na primeira vez que o app abre
+(preservando o caminho do executável).
 
 ## Linha de comando
 

@@ -542,11 +542,28 @@ function openGathered() {
   }
 }
 
+// Adds the -- that older versions left out of the git settings (see
+// Shell.gitMigrate). Runs in the background, once per user profile; the marker
+// is written only when the check went through, so a failed write is retried.
+// Also runs in the --wait processes that git starts, so `git jd` alone is
+// enough to fix the settings.
+function migrateGitSettings() {
+  const marker = path.join(app.getPath('userData'), 'git-settings-v2');
+  if (fs.existsSync(marker)) return;
+  Shell.gitMigrate()
+    .then(async () => {
+      await fs.promises.mkdir(path.dirname(marker), { recursive: true });
+      await fs.promises.writeFile(marker, '');
+    })
+    .catch(() => {});
+}
+
 function startWindow() {
   windowStarted = true;
   app.whenReady().then(() => {
     registerIpc();
     createWindow();
+    migrateGitSettings();
   });
   app.on('window-all-closed', () => app.quit());
 }
