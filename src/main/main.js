@@ -6,7 +6,6 @@ const path = require('path');
 const Dir = require('../core/dircompare');
 const Shell = require('./shellmenu');
 const Updater = require('./updater');
-const { build: { publish: PUBLISH } } = require('../../package.json');
 const { parseCli, appArgs } = require('./cli');
 
 const MAX_BINARY_BYTES = 64 * 1024 * 1024;
@@ -382,7 +381,7 @@ function registerIpc() {
   // (running from source) or would run too often (git difftool's --wait).
   handle('update:check', async (quiet) => {
     if (quiet && (!app.isPackaged || cli.wait)) return null;
-    updates.info = await Updater.checkLatest(net.fetch, PUBLISH, app.getVersion(), updateKind());
+    updates.info = await Updater.checkLatest(net.fetch, Updater.PUBLISH, app.getVersion(), updateKind());
     updates.file = null;
     return updates.info;
   });
@@ -489,6 +488,9 @@ let startPaths = cli.paths;
 function runHeadless() {
   try {
     switch (cli.mode) {
+      // Also a startup check: the release workflow runs the packaged app with
+      // it, so an error while loading the main process fails the build.
+      case 'version': process.stdout.write(`${app.getVersion()}\n`); return true;
       case 'select-left': Shell.selectLeft(leftStateFile(), cli.target, launcher()); return true;
       case 'register-shell': Shell.apply(Shell.plan(Shell.loadLeft(leftStateFile()), launcher())); return true;
       case 'unregister-shell': Shell.apply(Shell.removalPlan()); return true;

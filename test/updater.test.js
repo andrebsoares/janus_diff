@@ -22,6 +22,17 @@ const RELEASE = {
   ],
 };
 
+test('the release location matches build.publish in package.json', () => {
+  assert.deepStrictEqual(U.PUBLISH, require('../package.json').build.publish);
+});
+
+test('the app does not read package.json, whose packaged copy lacks "build"', () => {
+  const files = fs.readdirSync(path.join(__dirname, '../src'), { recursive: true })
+    .filter((f) => f.endsWith('.js'))
+    .filter((f) => /require\([^)]*package\.json/.test(fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')));
+  assert.deepStrictEqual(files, []);
+});
+
 test('compareVersions orders release and pre-release versions', () => {
   assert.ok(U.compareVersions('0.4.0', '0.3.0') > 0);
   assert.ok(U.compareVersions('v0.3.0', '0.3.1') < 0);

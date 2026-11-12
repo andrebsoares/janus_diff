@@ -3,7 +3,7 @@
 const path = require('path');
 
 const VALUE_FLAGS = { '--select-left': 'select-left', '--compare-to': 'compare-to', '--compare-selected': 'compare-selected' };
-const PLAIN_FLAGS = { '--register-shell': 'register-shell', '--unregister-shell': 'unregister-shell', '--git-setup': 'git-setup' };
+const PLAIN_FLAGS = { '--register-shell': 'register-shell', '--unregister-shell': 'unregister-shell', '--git-setup': 'git-setup', '--version': 'version' };
 // How git names the missing side of an added or deleted file.
 const NULL_FILES = ['/dev/null', 'nul'];
 
@@ -26,6 +26,7 @@ function externalDiffPaths(args, cwd) {
 //   --compare-to <path>     compare the remembered left side with this path
 //   --compare-selected <p>  one item of an Explorer multi-selection; the items
 //                           of one click are gathered and compared
+//   --version               print the version and exit
 function parseCli(args, cwd) {
   const out = { mode: 'open', paths: [], wait: false, target: null };
   for (let i = 0; i < args.length; i++) {

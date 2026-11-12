@@ -29,6 +29,20 @@ jobs:
       # Publishing from electron-builder makes each target create the release,
       # and the loser of that race fails the build; so it only builds.
       - run: npx electron-builder --win nsis portable --x64 --publish never
+      # Tests run from source; this runs the packaged app, so an error while
+      # loading the main process (which shows a dialog and hangs, hence the
+      # timeout) stops the release before anything is published.
+      - name: Check that the packaged app starts
+        shell: bash
+        timeout-minutes: 2
+        run: |
+          version=$(node -p "require('./package.json').version")
+          # Electron on Windows writes a line break of its own before it.
+          got=$("dist/win-unpacked/Janus Diff.exe" --version | tr -d '[:space:]')
+          if [ "$got" != "$version" ]; then
+            echo "::error::The packaged app printed '$got' for --version, expected '$version'"
+            exit 1
+          fi
       - name: Publish the release
         shell: bash
         run: gh release create "$GITHUB_REF_NAME" dist/*.exe dist/*.blockmap dist/latest.yml --generate-notes

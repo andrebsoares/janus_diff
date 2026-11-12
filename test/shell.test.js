@@ -112,6 +112,7 @@ test('command line parsing', () => {
   assert.strictEqual(parseCli(['--compare-to'], cwd).mode, 'open');
   assert.deepStrictEqual([parseCli(['--compare-selected', 'f.txt'], cwd).mode, parseCli(['--compare-selected'], cwd).mode], ['compare-selected', 'open']);
   assert.strictEqual(parseCli(['--register-shell'], cwd).mode, 'register-shell');
+  assert.strictEqual(parseCli(['--version'], cwd).mode, 'version');
 });
 
 test('app arguments skip the app path wherever the switches put it', () => {
